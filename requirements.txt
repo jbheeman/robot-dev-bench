@@ -1,0 +1,20 @@
+# Data manipulation and storage
+numpy
+pandas
+h5py
+pyarrow  # for parquet support
+mcap     # for MCAP log parsing
+
+# Signal processing
+scipy
+
+# Machine learning & Clustering
+scikit-learn
+
+# Visualization
+matplotlib
+seaborn
+jupyter  # for notebooks
+
+# Testing
+pytest

@@ -1,0 +1,29 @@
+# Data directories
+data/
+*.mcap
+*.hdf5
+*.h5
+*.parquet
+
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+.pytest_cache/
+.coverage
+htmlcov/
+*.egg-info/
+dist/
+build/
+
+# Virtual environments
+venv/
+.env
+env/
+.venv/
+
+# IDEs
+.vscode/
+.idea/
+*.swp
+.ipynb_checkpoints/

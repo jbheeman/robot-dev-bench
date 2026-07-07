@@ -1,3 +1,5 @@
+# Converts collected telemetry frames (list of LowStateData / HighStateData dicts)
+# into a Pandas DataFrame and writes it to Parquet or HDF5 on disk.
 import pandas as pd
 from typing import List, Dict, Any
 import logging

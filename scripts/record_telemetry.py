@@ -1,3 +1,9 @@
+# CLI entry point for capturing live telemetry from a Unitree G1 robot.
+# Connects to the robot over the specified network interface, records DDS messages
+# for --duration seconds (or until Ctrl-C), then exports the frames to Parquet or HDF5.
+#
+# Usage:
+#   python record_telemetry.py --interface eth0 --duration 30 --output_dir ./data
 import argparse
 import logging
 import os
@@ -19,13 +25,14 @@ def main():
     parser.add_argument("--duration", type=int, default=60, help="Recording duration in seconds.")
     parser.add_argument("--output_dir", type=str, required=True, help="Directory to save the extracted parquet/hdf5 files.")
     parser.add_argument("--format", type=str, choices=['parquet', 'hdf5'], default='parquet', help="Output format.")
-    
+
     args = parser.parse_args()
 
     os.makedirs(args.output_dir, exist_ok=True)
 
     subscriber = UnitreeLiveSubscriber(interface=args.interface)
-    
+
+    # initialize() sets up the CycloneDDS ChannelFactory; must succeed before subscribing
     try:
         subscriber.initialize()
     except Exception as e:
@@ -33,7 +40,8 @@ def main():
         sys.exit(1)
 
     subscriber.start_recording()
-    
+
+    # Block for the requested duration; Ctrl-C triggers an early but clean stop
     logger.info(f"Recording for {args.duration} seconds...")
     try:
         time.sleep(args.duration)
@@ -44,7 +52,7 @@ def main():
 
     logger.info(f"Recorded {len(subscriber.low_states)} low states and {len(subscriber.high_states)} high states.")
 
-    # Export Data
+    # Stamp filenames with the wall-clock time so successive runs don't overwrite each other
     timestamp = int(time.time())
     lowstate_file = os.path.join(args.output_dir, f"run_{timestamp}_lowstate.{args.format}")
     highstate_file = os.path.join(args.output_dir, f"run_{timestamp}_highstate.{args.format}")

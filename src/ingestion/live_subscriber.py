@@ -1,3 +1,6 @@
+# Subscribes to live CycloneDDS topics broadcast by a Unitree G1 robot over the local network.
+# Callbacks fire on each incoming message, extract the relevant fields, and append them to
+# in-memory lists; call stop_recording() then hand the lists to DataExporter to persist them.
 import logging
 import time
 from typing import List

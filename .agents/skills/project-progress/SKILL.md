@@ -13,18 +13,15 @@ Based on the `project-context` skill, here is the current global status of the i
 *   **Part 1: Project Objective:** Understood and ongoing.
 *   **Part 2: Telemetry Ingestion & Storage:** **[DONE]** `live_subscriber.py`, `exporter.py`, and `data_models.py` are implemented for capturing hardware data via CycloneDDS and exporting it to Pandas/Parquet.
 *   **Part 3: Data Processing & Synchronization (Post-Run):** **[DONE]** Zero-phase digital filtering (`filter.py`) and timestamp alignment/merging (`synchronizer.py`) are implemented and validated.
+*   **Part 4: Feature Engineering (Key Metrics):** **[DONE]** Metric extractors for control precision (RMSE), Cost of Transport (CoT), control latency, hardware stress, and stability (IMU and CoM variance) are implemented in `metrics.py` and `stability.py` and covered by unit tests in `test_features.py`.
 
 ## Immediate Next Steps
 
-**Status: We are done with Part 3 and are ready to move onto Part 4.**
+**Status: We are done with Part 4 and are ready to move onto Part 5 & 6.**
 
-Your primary focus should be on **Part 4: Feature Engineering (Key Metrics)**. 
-We need to implement the extraction of performance metrics, including:
-*   Control Precision (RMSE)
-*   Dynamic Stability
-*   Cost of Transport (CoT)
-*   Control Latency
-*   Hardware Stress
+Our focus will be on:
+*   **Part 5: Model Training Data & Baselines:** Collect/generate baseline metrics for human everyday motion, RL simulation models, and target limits.
+*   **Part 6: Classification Architecture:** Implement supervised rule-based scoring (`rules.py`) and unsupervised clustering (`clustering.py`) to categorize robot performance into classes.
 
 ## Known Bugs / Blockers
 

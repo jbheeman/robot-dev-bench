@@ -201,3 +201,84 @@ def compute_range_of_motion(df: pd.DataFrame) -> Dict[str, Any]:
         "mean_rom": mean_rom,
         "rom_per_joint": rom_per_joint
     }
+
+def compute_jumping_metrics(df: pd.DataFrame) -> Dict[str, Any]:
+    """
+    Heuristic estimation of jumping metrics using only joint trajectories.
+    Assumes rapid synchronous leg extension = jump, followed by impact.
+    """
+    q_mat = _get_q_matrix(df)
+    t_sec = _get_time_seconds(df)
+    
+    if q_mat.size == 0 or len(t_sec) < 4:
+        return {"flight_time": 0.0, "peak_z_accel": 0.0, "landing_jerk": 0.0}
+        
+    dt = np.gradient(t_sec)
+    dt[dt == 0] = 1e-6
+    v = np.gradient(q_mat, axis=0) / dt[:, np.newaxis]
+    a = np.gradient(v, axis=0) / dt[:, np.newaxis]
+    j = np.gradient(a, axis=0) / dt[:, np.newaxis]
+    
+    # Heuristic: use average absolute leg joint movement to represent vertical power
+    # We'll just use the global average variance for simplicity since we don't have explicit joint names here,
+    # but jumping is a full-body explosive movement.
+    global_accel = np.mean(np.abs(a), axis=1)
+    global_jerk = np.mean(np.abs(j), axis=1)
+    global_vel = np.mean(np.abs(v), axis=1)
+    
+    peak_z_accel = float(np.max(global_accel))
+    landing_jerk = float(np.max(global_jerk))
+    
+    # Flight time: period where velocity is very low AFTER a huge acceleration peak
+    # Find the peak acceleration (push-off)
+    push_off_idx = np.argmax(global_accel)
+    # Find the peak jerk (landing impact) AFTER push off
+    landing_jerk_idx = np.argmax(global_jerk[push_off_idx:]) + push_off_idx
+    
+    if landing_jerk_idx > push_off_idx:
+        flight_time = float(t_sec[landing_jerk_idx] - t_sec[push_off_idx])
+    else:
+        flight_time = 0.0
+        
+    return {
+        "flight_time": max(0.0, flight_time),
+        "peak_z_accel": peak_z_accel,
+        "landing_jerk": landing_jerk
+    }
+
+def compute_transition_metrics(df: pd.DataFrame) -> Dict[str, Any]:
+    """
+    Heuristic estimation for Stand <-> Sit transitions.
+    """
+    q_mat = _get_q_matrix(df)
+    t_sec = _get_time_seconds(df)
+    
+    if q_mat.size == 0 or len(t_sec) < 4:
+        return {"com_oscillation": 0.0, "transition_time": 0.0}
+        
+    dt = np.gradient(t_sec)
+    dt[dt == 0] = 1e-6
+    v = np.gradient(q_mat, axis=0) / dt[:, np.newaxis]
+    
+    global_vel = np.mean(np.abs(v), axis=1)
+    
+    # Transition time: duration where global velocity is above a small threshold
+    threshold = np.max(global_vel) * 0.15 # 15% of peak velocity
+    active_indices = np.where(global_vel > threshold)[0]
+    
+    if len(active_indices) > 0:
+        transition_time = float(t_sec[active_indices[-1]] - t_sec[active_indices[0]])
+    else:
+        transition_time = 0.0
+        
+    # CoM oscillation: Variance of the derivatives (wobble) during the transition
+    if len(active_indices) > 2:
+        active_v = v[active_indices, :]
+        com_oscillation = float(np.mean(np.var(active_v, axis=0)))
+    else:
+        com_oscillation = 0.0
+        
+    return {
+        "com_oscillation": com_oscillation,
+        "transition_time": max(0.0, transition_time)
+    }

@@ -35,6 +35,8 @@
                     <option value="walking">Walking</option>
                     <option value="reaching">Reaching</option>
                     <option value="manipulation">Manipulation</option>
+                    <option value="jumping">Jumping</option>
+                    <option value="transitions">Transitions</option>
                     <option value="testing">Testing Only (No Scoring)</option>
                 </select>
             </div>
@@ -92,7 +94,7 @@
                 <div class="glass-card metrics-card">
                     <h3 class="card-title">Key Metrics</h3>
                     <div class="metrics-grid">
-                        <div class="metric-item">
+                        <div class="metric-item" id="card-ldlj">
                             <div class="metric-header">
                                 <span class="metric-label">Smoothness (LDLJ)</span>
                                 <div class="info-icon-container">
@@ -102,7 +104,7 @@
                             </div>
                             <span id="metric-ldlj" class="metric-value">--</span>
                         </div>
-                        <div class="metric-item">
+                        <div class="metric-item" id="card-sparc">
                             <div class="metric-header">
                                 <span class="metric-label">Smoothness (SPARC)</span>
                                 <div class="info-icon-container">
@@ -112,7 +114,7 @@
                             </div>
                             <span id="metric-sparc" class="metric-value">--</span>
                         </div>
-                        <div class="metric-item">
+                        <div class="metric-item" id="card-symmetry">
                             <div class="metric-header">
                                 <span class="metric-label">Symmetry Index</span>
                                 <div class="info-icon-container">
@@ -122,7 +124,7 @@
                             </div>
                             <span id="metric-symmetry" class="metric-value">-- <small>%</small></span>
                         </div>
-                        <div class="metric-item">
+                        <div class="metric-item" id="card-periodicity">
                             <div class="metric-header">
                                 <span class="metric-label">Periodicity Score</span>
                                 <div class="info-icon-container">
@@ -132,7 +134,7 @@
                             </div>
                             <span id="metric-periodicity" class="metric-value">--</span>
                         </div>
-                        <div class="metric-item full-width">
+                        <div class="metric-item full-width" id="card-rom">
                             <div class="metric-header">
                                 <span class="metric-label">ROM Utilisation</span>
                                 <div class="info-icon-container">
@@ -141,6 +143,58 @@
                                 </div>
                             </div>
                             <span id="metric-rom" class="metric-value">-- <small>rad</small></span>
+                        </div>
+                        <!-- New Metrics for Jumping -->
+                        <div class="metric-item" id="card-flight-time" style="display: none;">
+                            <div class="metric-header">
+                                <span class="metric-label">Flight Time</span>
+                                <div class="info-icon-container">
+                                    <svg class="info-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"></circle><line x1="12" y1="16" x2="12" y2="12"></line><line x1="12" y1="8" x2="12.01" y2="8"></line></svg>
+                                    <div class="tooltip-text">Duration in the air during a jump. Measured from push-off peak acceleration to landing impact.</div>
+                                </div>
+                            </div>
+                            <span id="metric-flight-time" class="metric-value">-- <small>s</small></span>
+                        </div>
+                        <div class="metric-item" id="card-peak-z-accel" style="display: none;">
+                            <div class="metric-header">
+                                <span class="metric-label">Peak Z-Accel</span>
+                                <div class="info-icon-container">
+                                    <svg class="info-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"></circle><line x1="12" y1="16" x2="12" y2="12"></line><line x1="12" y1="8" x2="12.01" y2="8"></line></svg>
+                                    <div class="tooltip-text">Maximum vertical acceleration. Represents the explosive power of the push-off.</div>
+                                </div>
+                            </div>
+                            <span id="metric-peak-z-accel" class="metric-value">-- <small>rad/s²</small></span>
+                        </div>
+                        <div class="metric-item" id="card-landing-jerk" style="display: none;">
+                            <div class="metric-header">
+                                <span class="metric-label">Landing Jerk</span>
+                                <div class="info-icon-container">
+                                    <svg class="info-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"></circle><line x1="12" y1="16" x2="12" y2="12"></line><line x1="12" y1="8" x2="12.01" y2="8"></line></svg>
+                                    <div class="tooltip-text">Sharpness of deceleration on landing. Lower values mean better shock absorption.</div>
+                                </div>
+                            </div>
+                            <span id="metric-landing-jerk" class="metric-value">-- <small>rad/s³</small></span>
+                        </div>
+                        <!-- New Metrics for Transitions -->
+                        <div class="metric-item" id="card-com-oscillation" style="display: none;">
+                            <div class="metric-header">
+                                <span class="metric-label">CoM Oscillation</span>
+                                <div class="info-icon-container">
+                                    <svg class="info-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"></circle><line x1="12" y1="16" x2="12" y2="12"></line><line x1="12" y1="8" x2="12.01" y2="8"></line></svg>
+                                    <div class="tooltip-text">Center of Mass wobble during the transition. Lower variance is more stable.</div>
+                                </div>
+                            </div>
+                            <span id="metric-com-oscillation" class="metric-value">--</span>
+                        </div>
+                        <div class="metric-item" id="card-transition-time" style="display: none;">
+                            <div class="metric-header">
+                                <span class="metric-label">Transition Time</span>
+                                <div class="info-icon-container">
+                                    <svg class="info-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"></circle><line x1="12" y1="16" x2="12" y2="12"></line><line x1="12" y1="8" x2="12.01" y2="8"></line></svg>
+                                    <div class="tooltip-text">Total duration to complete the pose transition.</div>
+                                </div>
+                            </div>
+                            <span id="metric-transition-time" class="metric-value">-- <small>s</small></span>
                         </div>
                     </div>
                 </div>

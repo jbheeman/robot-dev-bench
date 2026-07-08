@@ -16,6 +16,54 @@ document.addEventListener('DOMContentLoaded', () => {
     const scoreRing = document.querySelector('.score-ring');
     const taskSelect = document.getElementById('task-select');
 
+    // UI Elements for New Metrics
+    const elFlightTime = document.getElementById('metric-flight-time');
+    const elPeakZAccel = document.getElementById('metric-peak-z-accel');
+    const elLandingJerk = document.getElementById('metric-landing-jerk');
+    const elComOscillation = document.getElementById('metric-com-oscillation');
+    const elTransitionTime = document.getElementById('metric-transition-time');
+
+    // Toggle logic for metrics visibility based on task
+    function toggleMetricsDisplay() {
+        const task = taskSelect.value;
+        const allCards = [
+            'card-ldlj', 'card-sparc', 'card-symmetry', 'card-periodicity', 'card-rom',
+            'card-flight-time', 'card-peak-z-accel', 'card-landing-jerk',
+            'card-com-oscillation', 'card-transition-time'
+        ];
+        
+        // Hide all first
+        allCards.forEach(id => {
+            const el = document.getElementById(id);
+            if(el) el.style.display = 'none';
+        });
+
+        // Show based on task weights
+        const cardsToShow = [];
+        if (task === 'walking') {
+            cardsToShow.push('card-ldlj', 'card-sparc', 'card-symmetry', 'card-periodicity', 'card-rom');
+        } else if (task === 'reaching' || task === 'manipulation') {
+            cardsToShow.push('card-ldlj', 'card-sparc', 'card-rom');
+        } else if (task === 'jumping') {
+            cardsToShow.push('card-flight-time', 'card-peak-z-accel', 'card-landing-jerk');
+        } else if (task === 'transitions') {
+            cardsToShow.push('card-com-oscillation', 'card-transition-time', 'card-ldlj', 'card-sparc');
+        } else if (task === 'testing') {
+            cardsToShow.push(...allCards); // Show all just to see them
+        }
+
+        cardsToShow.forEach(id => {
+            const el = document.getElementById(id);
+            if(el) el.style.display = 'flex';
+        });
+    }
+
+    if (taskSelect) {
+        taskSelect.addEventListener('change', toggleMetricsDisplay);
+        // Initial setup
+        toggleMetricsDisplay();
+    }
+
     // Event Listeners for Drag & Drop
     ['dragenter', 'dragover', 'dragleave', 'drop'].forEach(eventName => {
         dropZone.addEventListener(eventName, preventDefaults, false);
@@ -147,6 +195,13 @@ document.addEventListener('DOMContentLoaded', () => {
         
         elPeriodicity.textContent = data.metrics.periodicity.toFixed(3);
         elRom.innerHTML = `${data.metrics.rom_utilisation.toFixed(3)} <small>rad</small>`;
+        
+        // New Metrics
+        if (data.metrics.flight_time !== undefined) elFlightTime.innerHTML = `${data.metrics.flight_time.toFixed(3)} <small>s</small>`;
+        if (data.metrics.peak_z_accel !== undefined) elPeakZAccel.innerHTML = `${data.metrics.peak_z_accel.toFixed(3)} <small>rad/s²</small>`;
+        if (data.metrics.landing_jerk !== undefined) elLandingJerk.innerHTML = `${data.metrics.landing_jerk.toFixed(3)} <small>rad/s³</small>`;
+        if (data.metrics.com_oscillation !== undefined) elComOscillation.textContent = data.metrics.com_oscillation.toFixed(3);
+        if (data.metrics.transition_time !== undefined) elTransitionTime.innerHTML = `${data.metrics.transition_time.toFixed(3)} <small>s</small>`;
         
         // Pass playback data to viewer
         if (data.playback && window.loadPlaybackData) {

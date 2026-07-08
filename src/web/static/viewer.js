@@ -24,14 +24,14 @@ function initViewer() {
 
     camera = new THREE.PerspectiveCamera(45, container.clientWidth / container.clientHeight, 0.1, 100);
     camera.position.set(2.5, 1.5, 2.5);
-    camera.lookAt(0, 0.5, 0);
+    camera.lookAt(0, 0.1, 0); // Aim slightly lower towards the torso
 
     renderer = new THREE.WebGLRenderer({ antialias: true, alpha: true });
     renderer.setSize(container.clientWidth, container.clientHeight);
     container.appendChild(renderer.domElement);
     
     controls = new THREE.OrbitControls(camera, renderer.domElement);
-    controls.target.set(0, 0.5, 0);
+    controls.target.set(0, 0.1, 0); // Focus controls on the torso
     controls.update();
     
     // Load URDF

@@ -1,10 +1,10 @@
 :root {
-    --bg-dark: #0a0a0e;
+    --bg-dark: #1b232c;
     --bg-panel: rgba(255, 255, 255, 0.03);
     --border-color: rgba(255, 255, 255, 0.1);
-    --primary: #6366f1;
-    --primary-glow: rgba(99, 102, 241, 0.5);
-    --secondary: #a855f7;
+    --primary: #53a5a7;
+    --primary-glow: rgba(83, 165, 167, 0.5);
+    --secondary: #1a965a;
     --text-primary: #f8fafc;
     --text-secondary: #94a3b8;
     --success: #10b981;
@@ -73,11 +73,11 @@ body {
 .orb-3 {
     width: 300px;
     height: 300px;
-    background: #ec4899;
+    background: #53a5a7;
     top: 40%;
     left: 50%;
     transform: translate(-50%, -50%);
-    opacity: 0.2;
+    opacity: 0.1;
     animation-delay: -10s;
 }
 
@@ -90,7 +90,7 @@ body {
 .dashboard-container {
     width: 90%;
     max-width: 1000px;
-    padding: 2rem;
+    padding: 2rem 2rem 25vh 2rem; /* Added bottom padding to allow scrolling the last card to the center */
     display: flex;
     flex-direction: column;
     gap: 2rem;
@@ -104,11 +104,12 @@ body {
 .gradient-text {
     font-size: 3rem;
     font-weight: 700;
-    background: linear-gradient(135deg, #e0e7ff 0%, #a5b4fc 100%);
+    background: linear-gradient(135deg, #ffffff 0%, #7af0ed 100%);
     -webkit-background-clip: text;
     -webkit-text-fill-color: transparent;
     margin-bottom: 0.5rem;
     letter-spacing: -0.5px;
+    text-shadow: 0 0 20px rgba(122, 240, 237, 0.3);
 }
 
 .subtitle {
@@ -167,7 +168,7 @@ body {
 
 .drop-zone.active-drop {
     border-color: var(--primary);
-    background: rgba(99, 102, 241, 0.1);
+    background: rgba(83, 165, 167, 0.1);
     transform: scale(1.02);
 }
 
@@ -250,7 +251,7 @@ body {
 .spinner {
     width: 50px;
     height: 50px;
-    border: 3px solid rgba(99, 102, 241, 0.3);
+    border: 3px solid rgba(83, 165, 167, 0.3);
     border-radius: 50%;
     border-top-color: var(--primary);
     animation: spin 1s ease-in-out infinite;

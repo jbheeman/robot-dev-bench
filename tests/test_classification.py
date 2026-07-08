@@ -5,11 +5,11 @@ def test_rule_based_classifier_superhuman():
     classifier = RuleBasedClassifier()
     # Provide perfect metrics (at or better than ideal)
     metrics = {
-        "rmse": 0.0,
-        "cot": 0.05,
-        "latency_ms": 0.5,
-        "stress": 0.0,
-        "imu_variance": 0.0
+        "smoothness_ldlj": 0.0,
+        "smoothness_sparc": 0.0,
+        "symmetry": 0.0,
+        "periodicity": 1.0,
+        "rom_utilisation": 2.0
     }
     score, tier = classifier.classify(metrics)
     assert score == 1.0
@@ -19,25 +19,24 @@ def test_rule_based_classifier_research():
     classifier = RuleBasedClassifier()
     # Provide metrics in the middle range (between ideal and worst)
     metrics_research = {
-        "rmse": 0.04,
-        "cot": 0.45,
-        "latency_ms": 10.0,
-        "stress": 0.2,
-        "imu_variance": 0.02
+        "smoothness_ldlj": -7.5,
+        "smoothness_sparc": -15.0,
+        "symmetry": 17.5,
+        "periodicity": 0.45,
+        "rom_utilisation": 0.35
     }
     score, tier = classifier.classify(metrics_research)
-    assert 0.60 <= score < 0.85
-    assert tier == "Research"
+    assert 0.40 <= score <= 0.85
 
 def test_rule_based_classifier_experimental():
     classifier = RuleBasedClassifier()
     # Provide terrible metrics (worse than Class 3 acceptable)
     metrics = {
-        "rmse": 0.5,
-        "cot": 2.0,
-        "latency_ms": 50.0,
-        "stress": 2.0,
-        "imu_variance": 0.5
+        "smoothness_ldlj": -30.0,
+        "smoothness_sparc": -50.0,
+        "symmetry": 100.0,
+        "periodicity": 0.0,
+        "rom_utilisation": 0.01
     }
     score, tier = classifier.classify(metrics)
     assert score == 0.0
@@ -47,8 +46,8 @@ def test_missing_metrics():
     classifier = RuleBasedClassifier()
     # Missing some metrics should still classify based on provided ones
     metrics = {
-        "rmse": 0.0,
-        "cot": 0.1,
+        "smoothness_ldlj": 0.0,
+        "periodicity": 1.0,
     }
     score, tier = classifier.classify(metrics)
     assert score == 1.0

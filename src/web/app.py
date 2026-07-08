@@ -15,6 +15,8 @@ from src.features.biomechanics import (
     compute_symmetry,
     compute_periodicity,
     compute_range_of_motion,
+    compute_jumping_metrics,
+    compute_transition_metrics,
 )
 
 logging.basicConfig(level=logging.INFO)
@@ -41,6 +43,8 @@ def extract_metrics_from_dataframe(df: pd.DataFrame) -> dict:
     symmetry = compute_symmetry(df)
     periodicity = compute_periodicity(df)
     rom = compute_range_of_motion(df)
+    jumping = compute_jumping_metrics(df)
+    transitions = compute_transition_metrics(df)
     
     mean_ldlj = smoothness.get("mean_ldlj")
     mean_sparc = sparc.get("mean_sparc")
@@ -57,6 +61,11 @@ def extract_metrics_from_dataframe(df: pd.DataFrame) -> dict:
         "symmetry": mean_symmetry_index,
         "periodicity": round(regularity_score, 3) if regularity_score is not None else 0.0,
         "rom_utilisation": round(mean_rom, 3) if mean_rom is not None else 0.0,
+        "flight_time": round(jumping.get("flight_time", 0.0), 3),
+        "peak_z_accel": round(jumping.get("peak_z_accel", 0.0), 3),
+        "landing_jerk": round(jumping.get("landing_jerk", 0.0), 3),
+        "com_oscillation": round(transitions.get("com_oscillation", 0.0), 3),
+        "transition_time": round(transitions.get("transition_time", 0.0), 3),
     }
 
 
@@ -123,7 +132,12 @@ async def upload_log_file(file: UploadFile = File(...), task: str = Form("genera
                 "smoothness_sparc": 0.0,
                 "symmetry": 0.0,
                 "periodicity": 0.0,
-                "rom_utilisation": 0.0
+                "rom_utilisation": 0.0,
+                "flight_time": 0.0,
+                "peak_z_accel": 0.0,
+                "landing_jerk": 0.0,
+                "com_oscillation": 0.0,
+                "transition_time": 0.0
             }
         else:
             metrics = extract_metrics_from_dataframe(df)
@@ -159,4 +173,4 @@ app.mount("/", StaticFiles(directory=STATIC_DIR, html=True), name="static")
 
 if __name__ == "__main__":
     import uvicorn
-    uvicorn.run("src.web.app:app", host="0.0.0.0", port=8000, reload=True)
+    uvicorn.run("src.web.app:app", host="0.0.0.0", port=3000, reload=True)

@@ -25,7 +25,12 @@ CLASS_1_THRESHOLDS = {
     "smoothness_sparc": {"ideal": -2.0, "acceptable": -10.0, "weight": 0.2},
     "symmetry": {"ideal": 2.0, "acceptable": 10.0, "weight": 0.2},
     "periodicity": {"ideal": 0.9, "acceptable": 0.6, "weight": 0.2},
-    "rom_utilisation": {"ideal": 1.5, "acceptable": 0.5, "weight": 0.2}
+    "rom_utilisation": {"ideal": 1.5, "acceptable": 0.5, "weight": 0.2},
+    "flight_time": {"ideal": 0.5, "acceptable": 0.1, "weight": 0.0},
+    "peak_z_accel": {"ideal": 9.8, "acceptable": 2.0, "weight": 0.0},
+    "landing_jerk": {"ideal": 50.0, "acceptable": 200.0, "weight": 0.0},
+    "com_oscillation": {"ideal": 0.05, "acceptable": 0.3, "weight": 0.0},
+    "transition_time": {"ideal": 1.0, "acceptable": 3.0, "weight": 0.0}
 }
 
 CLASS_2_THRESHOLDS = {
@@ -33,7 +38,12 @@ CLASS_2_THRESHOLDS = {
     "smoothness_sparc": {"ideal": -10.0, "acceptable": -20.0, "weight": 0.2},
     "symmetry": {"ideal": 10.0, "acceptable": 25.0, "weight": 0.2},
     "periodicity": {"ideal": 0.6, "acceptable": 0.3, "weight": 0.2},
-    "rom_utilisation": {"ideal": 0.5, "acceptable": 0.2, "weight": 0.2}
+    "rom_utilisation": {"ideal": 0.5, "acceptable": 0.2, "weight": 0.2},
+    "flight_time": {"ideal": 0.3, "acceptable": 0.05, "weight": 0.0},
+    "peak_z_accel": {"ideal": 5.0, "acceptable": 1.0, "weight": 0.0},
+    "landing_jerk": {"ideal": 100.0, "acceptable": 300.0, "weight": 0.0},
+    "com_oscillation": {"ideal": 0.1, "acceptable": 0.5, "weight": 0.0},
+    "transition_time": {"ideal": 2.0, "acceptable": 5.0, "weight": 0.0}
 }
 
 CLASS_3_THRESHOLDS = {
@@ -41,7 +51,12 @@ CLASS_3_THRESHOLDS = {
     "smoothness_sparc": {"ideal": -20.0, "acceptable": -40.0, "weight": 0.2},
     "symmetry": {"ideal": 25.0, "acceptable": 50.0, "weight": 0.2},
     "periodicity": {"ideal": 0.3, "acceptable": 0.1, "weight": 0.2},
-    "rom_utilisation": {"ideal": 0.2, "acceptable": 0.05, "weight": 0.2}
+    "rom_utilisation": {"ideal": 0.2, "acceptable": 0.05, "weight": 0.2},
+    "flight_time": {"ideal": 0.1, "acceptable": 0.0, "weight": 0.0},
+    "peak_z_accel": {"ideal": 2.0, "acceptable": 0.5, "weight": 0.0},
+    "landing_jerk": {"ideal": 200.0, "acceptable": 500.0, "weight": 0.0},
+    "com_oscillation": {"ideal": 0.2, "acceptable": 0.8, "weight": 0.0},
+    "transition_time": {"ideal": 4.0, "acceptable": 10.0, "weight": 0.0}
 }
 
 # Task-specific weight overrides
@@ -63,9 +78,28 @@ TASK_WEIGHTS = {
     "manipulation": {
         "smoothness_ldlj": 0.25,
         "smoothness_sparc": 0.25,
-        "symmetry": 0.1,
-        "periodicity": 0.1,
-        "rom_utilisation": 0.3
+        "symmetry": 0.0,
+        "periodicity": 0.0,
+        "rom_utilisation": 0.5
+    },
+    "jumping": {
+        "flight_time": 0.4,
+        "peak_z_accel": 0.3,
+        "landing_jerk": 0.3,
+        "smoothness_ldlj": 0.0,
+        "smoothness_sparc": 0.0,
+        "symmetry": 0.0,
+        "periodicity": 0.0,
+        "rom_utilisation": 0.0
+    },
+    "transitions": {
+        "com_oscillation": 0.5,
+        "transition_time": 0.3,
+        "smoothness_ldlj": 0.1,
+        "smoothness_sparc": 0.1,
+        "symmetry": 0.0,
+        "periodicity": 0.0,
+        "rom_utilisation": 0.0
     }
 }
 

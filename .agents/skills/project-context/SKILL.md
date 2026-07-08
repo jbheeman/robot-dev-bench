@@ -26,11 +26,24 @@ Develop a post-run, digital benchmarking and classification tool for the Unitree
 
 ## 4. Feature Engineering (Key Metrics)
 
-* **Control Precision:** Root Mean Square Error (RMSE) between commanded target joint positions and actual encoder readings.
-* **Dynamic Stability:** Variance in IMU roll and pitch, and Center of Mass (CoM) stability during gait cycles.
-* **Cost of Transport (CoT):** Integrated power consumption (voltage $\times$ current) over trajectory distance.
-* **Control Latency:** Temporal delay between policy output (command) and mechanical actuation.
-* **Hardware Stress:** Detection of extreme torque $\tau$ spikes.
+Metrics must be clinically-grounded and dynamically tailored to the specific evaluation task. We do not use a "one-size-fits-all" approach (e.g., penalizing asymmetry during a one-handed manipulation task).
+
+* **Task-Agnostic Core Metrics:**
+  * **Smoothness:** Log Dimensionless Jerk (LDLJ) and Spectral Arc Length (SPARC) to quantify trajectory fluidity.
+  * **Range of Motion (ROM) Utilisation:** Angular displacement to measure dynamic capability usage.
+* **Walking / Locomotion Metrics:**
+  * **Symmetry Index:** Variance comparison between left/right kinematic chains.
+  * **Periodicity:** Autocorrelation to measure gait cycle regularity.
+* **Manipulation / Reaching Metrics:**
+  * **End-Effector Precision:** Deviation and shaking at the wrist.
+  * **Settling Time:** Time required to stabilize after reaching a target.
+* **Jumping Metrics:**
+  * **Flight Time:** Duration of zero ground contact.
+  * **Peak Z-Axis Acceleration:** Explosive power measurement.
+  * **Landing Jerk:** Impact absorption and joint stress upon landing.
+* **Transitions (Standing Up / Sitting Down):**
+  * **CoM Oscillation:** Postural stability and wobble during weight shifting.
+  * **Transition Time:** Speed and fluidity of the phase change.
 
 ## 5. Model Training Data & Baselines
 

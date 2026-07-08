@@ -15,8 +15,8 @@ It is possible to reconstruct and visualize the 3D movement of the Unitree G1-Ed
 
 If activated by the user, the implementation will require a **Moderate to High** level of effort and the following components:
 
-### 1. Prerequisites (User-Provided)
-Before any coding can begin, the AI must ensure the user has provided the physical description files for the Unitree G1-Edu:
+### 1. Prerequisites (Source from GitHub)
+Before any coding can begin, the AI must source the physical description files for the Unitree G1-Edu from the Unitree GitHub repository:
 - **URDF File:** The XML file that describes the robot's kinematic tree (how joints and links are connected).
 - **3D Meshes:** The visual files (e.g., `.stl`, `.obj`, or `.dae`) referenced by the URDF that represent the actual geometry of the robot links.
 

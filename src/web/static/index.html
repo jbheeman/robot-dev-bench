@@ -9,6 +9,11 @@
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
     <link href="https://fonts.googleapis.com/css2?family=Outfit:wght@300;400;500;600;700&display=swap" rel="stylesheet">
     <link rel="stylesheet" href="style.css">
+    <!-- Three.js and URDF Loader -->
+    <script src="https://unpkg.com/three@0.147.0/build/three.min.js"></script>
+    <script src="https://unpkg.com/three@0.147.0/examples/js/loaders/STLLoader.js"></script>
+    <script src="https://unpkg.com/three@0.147.0/examples/js/controls/OrbitControls.js"></script>
+    <script src="https://unpkg.com/urdf-loader@0.10.3/umd/URDFLoader.js"></script>
 </head>
 <body>
     <div class="background-elements">
@@ -24,9 +29,19 @@
         </header>
 
         <section class="upload-section">
+            <div class="task-selector-container">
+                <label for="task-select" class="task-label">Select Task:</label>
+                <select id="task-select" class="task-select">
+                    <option value="walking">Walking</option>
+                    <option value="reaching">Reaching</option>
+                    <option value="manipulation">Manipulation</option>
+                    <option value="testing">Testing Only (No Scoring)</option>
+                </select>
+            </div>
+            
             <div id="drop-zone" class="drop-zone">
                 <input type="file" id="file-input" class="file-input" accept=".parquet" hidden>
-                <div class="drop-content">
+                <div class="drop-content" id="drop-content-default">
                     <svg class="upload-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
                         <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"></path>
                         <polyline points="17 8 12 3 7 8"></polyline>
@@ -35,6 +50,14 @@
                     <h3 class="drop-title">Drag & Drop Log File</h3>
                     <p class="drop-desc">Upload a <strong>.parquet</strong> telemetry log to begin analysis</p>
                     <button class="browse-btn" id="browse-btn">Browse Files</button>
+                </div>
+                <div class="drop-content hidden" id="drop-content-success">
+                    <svg class="upload-icon" style="color: var(--primary);" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                        <path d="M22 11.08V12a10 10 0 1 1-5.93-9.14"></path>
+                        <polyline points="22 4 12 14.01 9 11.01"></polyline>
+                    </svg>
+                    <h3 class="drop-title" id="uploaded-filename">filename.parquet</h3>
+                    <button class="browse-btn" id="change-file-btn" style="margin-top: 1rem;">Change File</button>
                 </div>
             </div>
             <div id="loading-overlay" class="loading-overlay hidden">
@@ -47,7 +70,13 @@
             <div class="results-grid">
                 <!-- Classification Card -->
                 <div class="glass-card classification-card">
-                    <h3 class="card-title">Policy Classification</h3>
+                    <h3 class="card-title">
+                        Policy Classification
+                        <div class="info-icon-container" style="margin-left: auto;">
+                            <svg class="info-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"></circle><line x1="12" y1="16" x2="12" y2="12"></line><line x1="12" y1="8" x2="12.01" y2="8"></line></svg>
+                            <div class="tooltip-text">Calculated using a weighted sum of the biomechanical metrics below, dynamically adjusted based on the selected Evaluation Task.</div>
+                        </div>
+                    </h3>
                     <div class="classification-content">
                         <div class="score-ring">
                             <span id="classification-score" class="score-value">--</span>
@@ -64,30 +93,74 @@
                     <h3 class="card-title">Key Metrics</h3>
                     <div class="metrics-grid">
                         <div class="metric-item">
-                            <span class="metric-label">RMSE</span>
-                            <span id="metric-rmse" class="metric-value">--</span>
+                            <div class="metric-header">
+                                <span class="metric-label">Smoothness (LDLJ)</span>
+                                <div class="info-icon-container">
+                                    <svg class="info-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"></circle><line x1="12" y1="16" x2="12" y2="12"></line><line x1="12" y1="8" x2="12.01" y2="8"></line></svg>
+                                    <div class="tooltip-text">Log Dimensionless Jerk. Measures movement fluidity by integrating squared jerk over the trajectory. Higher (closer to 0) indicates smoother movement.</div>
+                                </div>
+                            </div>
+                            <span id="metric-ldlj" class="metric-value">--</span>
                         </div>
                         <div class="metric-item">
-                            <span class="metric-label">Cost of Transport</span>
-                            <span id="metric-cot" class="metric-value">--</span>
+                            <div class="metric-header">
+                                <span class="metric-label">Smoothness (SPARC)</span>
+                                <div class="info-icon-container">
+                                    <svg class="info-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"></circle><line x1="12" y1="16" x2="12" y2="12"></line><line x1="12" y1="8" x2="12.01" y2="8"></line></svg>
+                                    <div class="tooltip-text">Spectral Arc Length. Measures smoothness in the frequency domain. Less sensitive to noise than LDLJ. Higher values indicate smoother movement.</div>
+                                </div>
+                            </div>
+                            <span id="metric-sparc" class="metric-value">--</span>
                         </div>
                         <div class="metric-item">
-                            <span class="metric-label">Control Latency</span>
-                            <span id="metric-latency" class="metric-value">-- <small>ms</small></span>
+                            <div class="metric-header">
+                                <span class="metric-label">Symmetry Index</span>
+                                <div class="info-icon-container">
+                                    <svg class="info-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"></circle><line x1="12" y1="16" x2="12" y2="12"></line><line x1="12" y1="8" x2="12.01" y2="8"></line></svg>
+                                    <div class="tooltip-text">Measures left-right joint symmetry by comparing movement variance between opposing sides. 0% means perfectly symmetrical, higher values indicate asymmetry (up to 200%).</div>
+                                </div>
+                            </div>
+                            <span id="metric-symmetry" class="metric-value">-- <small>%</small></span>
                         </div>
                         <div class="metric-item">
-                            <span class="metric-label">Stress</span>
-                            <span id="metric-stress" class="metric-value">--</span>
+                            <div class="metric-header">
+                                <span class="metric-label">Periodicity Score</span>
+                                <div class="info-icon-container">
+                                    <svg class="info-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"></circle><line x1="12" y1="16" x2="12" y2="12"></line><line x1="12" y1="8" x2="12.01" y2="8"></line></svg>
+                                    <div class="tooltip-text">Measures gait regularity using autocorrelation. A score of 1.0 indicates perfect repetition of the movement cycle.</div>
+                                </div>
+                            </div>
+                            <span id="metric-periodicity" class="metric-value">--</span>
                         </div>
                         <div class="metric-item full-width">
-                            <span class="metric-label">IMU Variance</span>
-                            <span id="metric-imu" class="metric-value">--</span>
+                            <div class="metric-header">
+                                <span class="metric-label">ROM Utilisation</span>
+                                <div class="info-icon-container">
+                                    <svg class="info-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"></circle><line x1="12" y1="16" x2="12" y2="12"></line><line x1="12" y1="8" x2="12.01" y2="8"></line></svg>
+                                    <div class="tooltip-text">Range of Motion Utilisation. The mean angular displacement across all active joints. Indicates how dynamically the robot's capabilities are being used.</div>
+                                </div>
+                            </div>
+                            <span id="metric-rom" class="metric-value">-- <small>rad</small></span>
                         </div>
+                    </div>
+                </div>
+                
+                <!-- 3D Viewer Card -->
+                <div class="glass-card viewer-card full-width" style="grid-column: 1 / -1; margin-top: 1.5rem;">
+                    <h3 class="card-title">3D Playback</h3>
+                    <div id="viewer-container" class="viewer-container">
+                        <!-- WebGL Canvas will be injected here -->
+                    </div>
+                    <div class="playback-controls">
+                        <button id="play-btn" class="control-btn">Play</button>
+                        <button id="pause-btn" class="control-btn">Pause</button>
+                        <input type="range" id="timeline" min="0" max="100" value="0" class="timeline">
                     </div>
                 </div>
             </div>
         </section>
     </main>
     <script src="script.js"></script>
+    <script src="viewer.js"></script>
 </body>
 </html>

@@ -1,19 +1,21 @@
 import os
 import tempfile
 import logging
+import numpy as np
 import pandas as pd
-from fastapi import FastAPI, UploadFile, File, HTTPException
+from fastapi import FastAPI, UploadFile, File, Form, HTTPException
 from fastapi.responses import JSONResponse
 from fastapi.staticfiles import StaticFiles
 
+from src.ingestion.schema_mapper import SchemaMapper
 from src.classification.rules import RuleBasedClassifier
-from src.features.metrics import (
-    compute_control_precision,
-    compute_cost_of_transport,
-    compute_control_latency,
-    compute_hardware_stress,
+from src.features.biomechanics import (
+    compute_smoothness,
+    compute_spectral_arc_length,
+    compute_symmetry,
+    compute_periodicity,
+    compute_range_of_motion,
 )
-from src.features.stability import compute_imu_variance, compute_com_stability
 
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
@@ -34,42 +36,32 @@ def extract_metrics_from_dataframe(df: pd.DataFrame) -> dict:
     Runs all feature extractors against a telemetry DataFrame loaded from a .parquet file.
     Returns a flat dict of scalar metrics ready for the classifier.
     """
-    # --- Control Precision (RMSE) ---
-    precision = compute_control_precision(df)
-    rmse = precision.get("mean_rmse", 0.0)
+    smoothness = compute_smoothness(df)
+    sparc = compute_spectral_arc_length(df)
+    symmetry = compute_symmetry(df)
+    periodicity = compute_periodicity(df)
+    rom = compute_range_of_motion(df)
+    
+    mean_ldlj = smoothness.get("mean_ldlj")
+    mean_sparc = sparc.get("mean_sparc")
+    mean_symmetry_index = symmetry.get("mean_symmetry_index")
+    regularity_score = periodicity.get("regularity_score")
+    mean_rom = rom.get("mean_rom")
 
-    # --- Cost of Transport ---
-    cot = compute_cost_of_transport(df)
-
-    # --- Control Latency ---
-    latency_result = compute_control_latency(df)
-    latency_s = latency_result.get("mean_latency_seconds", 0.0)
-    latency_ms = latency_s * 1000.0
-
-    # --- Hardware Stress ---
-    stress_result = compute_hardware_stress(df)
-    # Normalise: overall_max_torque as a fraction of the 40 Nm limit threshold
-    overall_max_torque = stress_result.get("overall_max_torque", 0.0)
-    stress_normalised = min(overall_max_torque / 40.0, 1.0)
-
-    # --- IMU / Stability Variance ---
-    imu_result = compute_imu_variance(df)
-    # Use the average of roll + pitch variance as the stability signal
-    roll_var = imu_result.get("roll_variance", 0.0)
-    pitch_var = imu_result.get("pitch_variance", 0.0)
-    imu_variance = (roll_var + pitch_var) / 2.0
+    if mean_symmetry_index is not None:
+        mean_symmetry_index = round(mean_symmetry_index, 3)
 
     return {
-        "rmse": round(rmse, 4),
-        "cot": round(cot, 3),
-        "latency_ms": round(latency_ms, 2),
-        "stress": round(stress_normalised, 3),
-        "imu_variance": round(imu_variance, 4),
+        "smoothness_ldlj": round(mean_ldlj, 3) if mean_ldlj is not None else 0.0,
+        "smoothness_sparc": round(mean_sparc, 3) if mean_sparc is not None else 0.0,
+        "symmetry": mean_symmetry_index,
+        "periodicity": round(regularity_score, 3) if regularity_score is not None else 0.0,
+        "rom_utilisation": round(mean_rom, 3) if mean_rom is not None else 0.0,
     }
 
 
 @app.post("/api/upload")
-async def upload_log_file(file: UploadFile = File(...)):
+async def upload_log_file(file: UploadFile = File(...), task: str = Form("general")):
     """
     Accepts a .parquet robot telemetry log, runs the full benchmarking pipeline,
     and returns real classification results.
@@ -91,20 +83,62 @@ async def upload_log_file(file: UploadFile = File(...)):
         df = pd.read_parquet(tmp_path, engine="pyarrow")
         logger.info(f"Loaded '{file.filename}': {len(df)} rows, columns: {list(df.columns)}")
 
-        # Extract real metrics
-        metrics = extract_metrics_from_dataframe(df)
-        logger.info(f"Extracted metrics: {metrics}")
+        # If it's a multi-episode dataset, take only the first episode to avoid stitching discontinuities
+        if 'episode_index' in df.columns:
+            first_episode = df['episode_index'].iloc[0]
+            df = df[df['episode_index'] == first_episode]
+            logger.info(f"Filtered to episode {first_episode}: {len(df)} rows remain")
 
-        # Classify using real metrics
-        score, tier = classifier.classify(metrics)
+        # Normalise schema
+        df = SchemaMapper.normalise(df)
+        logger.info(f"Normalised columns: {list(df.columns)}")
+
+        # Extract playback data (downsampled to ~30Hz for the viewer)
+        duration_sec = 0.0
+        if 'tick' in df and len(df) > 1:
+            duration_sec = (df['tick'].iloc[-1] - df['tick'].iloc[0]) / 1000.0
+            
+        target_frames = max(100, int(duration_sec * 30)) if duration_sec > 0 else 300
+        # Cap at 900 frames (30 seconds of 30fps playback) to prevent massive JSON payloads
+        target_frames = min(900, target_frames)
+        
+        if len(df) > target_frames:
+            indices = np.linspace(0, len(df) - 1, target_frames, dtype=int)
+            playback_df = df.iloc[indices]
+        else:
+            playback_df = df
+            
+        playback_data = {
+            "ticks": [float(x) for x in playback_df['tick']] if 'tick' in playback_df else [],
+            "q": [[float(val) for val in row] for row in playback_df['q']] if 'q' in playback_df else []
+        }
+
+        # Classify using real metrics unless it's testing only
+        if task == "testing":
+            score = 0.0
+            tier = "Testing (No Score)"
+            # Provide zeroed metrics for testing mode
+            metrics = {
+                "smoothness_ldlj": 0.0,
+                "smoothness_sparc": 0.0,
+                "symmetry": 0.0,
+                "periodicity": 0.0,
+                "rom_utilisation": 0.0
+            }
+        else:
+            metrics = extract_metrics_from_dataframe(df)
+            logger.info(f"Extracted metrics: {metrics}")
+            score, tier = classifier.classify(metrics, task=task)
 
         return JSONResponse(content={
             "filename": file.filename,
+            "task": task,
             "metrics": metrics,
             "classification": {
                 "score": round(score, 3),
                 "tier": tier,
             },
+            "playback": playback_data,
             "status": "success",
         })
 

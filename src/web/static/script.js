@@ -8,12 +8,13 @@ document.addEventListener('DOMContentLoaded', () => {
     // UI Elements for Data
     const elScore = document.getElementById('classification-score');
     const elTier = document.getElementById('policy-tier');
-    const elRmse = document.getElementById('metric-rmse');
-    const elCot = document.getElementById('metric-cot');
-    const elLatency = document.getElementById('metric-latency');
-    const elStress = document.getElementById('metric-stress');
-    const elImu = document.getElementById('metric-imu');
+    const elLdlj = document.getElementById('metric-ldlj');
+    const elSparc = document.getElementById('metric-sparc');
+    const elSymmetry = document.getElementById('metric-symmetry');
+    const elPeriodicity = document.getElementById('metric-periodicity');
+    const elRom = document.getElementById('metric-rom');
     const scoreRing = document.querySelector('.score-ring');
+    const taskSelect = document.getElementById('task-select');
 
     // Event Listeners for Drag & Drop
     ['dragenter', 'dragover', 'dragleave', 'drop'].forEach(eventName => {
@@ -39,6 +40,12 @@ document.addEventListener('DOMContentLoaded', () => {
 
     dropZone.addEventListener('drop', handleDrop, false);
     browseBtn.addEventListener('click', () => fileInput.click());
+    
+    const changeFileBtn = document.getElementById('change-file-btn');
+    if (changeFileBtn) {
+        changeFileBtn.addEventListener('click', () => fileInput.click());
+    }
+    
     fileInput.addEventListener('change', handleFileSelect);
 
     function handleDrop(e) {
@@ -61,9 +68,16 @@ document.addEventListener('DOMContentLoaded', () => {
         // Show loading state
         resultsSection.classList.add('hidden');
         loadingOverlay.classList.remove('hidden');
+        
+        // Hide default drop content while loading/success
+        document.getElementById('drop-content-default').classList.add('hidden');
+        document.getElementById('drop-content-success').classList.add('hidden');
 
         const formData = new FormData();
         formData.append('file', file);
+        if (taskSelect) {
+            formData.append('task', taskSelect.value);
+        }
 
         try {
             const response = await fetch('/api/upload', {
@@ -79,6 +93,10 @@ document.addEventListener('DOMContentLoaded', () => {
             
             if (data.status === 'success') {
                 updateDashboard(data);
+                
+                // Show success drop content
+                document.getElementById('drop-content-success').classList.remove('hidden');
+                document.getElementById('uploaded-filename').textContent = file.name;
                 
                 // Hide loading, show results
                 loadingOverlay.classList.add('hidden');
@@ -97,6 +115,9 @@ document.addEventListener('DOMContentLoaded', () => {
             console.error('Error uploading file:', error);
             alert('Failed to upload and analyze log file.');
             loadingOverlay.classList.add('hidden');
+            // Revert drop zone UI
+            document.getElementById('drop-content-default').classList.remove('hidden');
+            document.getElementById('drop-content-success').classList.add('hidden');
         }
     }
 
@@ -115,14 +136,22 @@ document.addEventListener('DOMContentLoaded', () => {
         elTier.style.webkitBackgroundClip = 'text';
 
         // Metrics
-        elRmse.textContent = data.metrics.rmse.toFixed(4);
-        elCot.textContent = data.metrics.cot.toFixed(3);
+        elLdlj.textContent = data.metrics.smoothness_ldlj.toFixed(3);
+        elSparc.textContent = data.metrics.smoothness_sparc.toFixed(3);
         
-        // Add ms styling logic securely
-        elLatency.innerHTML = `${data.metrics.latency_ms.toFixed(2)} <small>ms</small>`;
+        if (data.metrics.symmetry !== null && data.metrics.symmetry !== undefined) {
+            elSymmetry.innerHTML = `${data.metrics.symmetry.toFixed(3)} <small>%</small>`;
+        } else {
+            elSymmetry.innerHTML = `-- <small>%</small>`;
+        }
         
-        elStress.textContent = data.metrics.stress.toFixed(3);
-        elImu.textContent = data.metrics.imu_variance.toFixed(4);
+        elPeriodicity.textContent = data.metrics.periodicity.toFixed(3);
+        elRom.innerHTML = `${data.metrics.rom_utilisation.toFixed(3)} <small>rad</small>`;
+        
+        // Pass playback data to viewer
+        if (data.playback && window.loadPlaybackData) {
+            window.loadPlaybackData(data.playback);
+        }
     }
 
     function animateScoreRing(score) {

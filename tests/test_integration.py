@@ -24,7 +24,13 @@ from src.web.app import app
 from scripts.generate_test_parquet import generate
 
 VALID_TIERS = {"Superhuman/Industrial", "Research", "Experimental"}
-EXPECTED_METRIC_KEYS = {"rmse", "cot", "latency_ms", "stress", "imu_variance"}
+EXPECTED_METRIC_KEYS = {
+    "smoothness_ldlj",
+    "smoothness_sparc",
+    "symmetry",
+    "periodicity",
+    "rom_utilisation",
+}
 
 
 @pytest.fixture(scope="module")
@@ -128,20 +134,22 @@ class TestUploadEndpoint:
         data = response.json()
         assert data["filename"] == "my_run.parquet"
 
-    def test_upload_rmse_is_positive(self, client, parquet_bytes):
-        """RMSE should be a non-negative value (errors are always >= 0)."""
+    def test_upload_ldlj_is_negative_or_zero(self, client, parquet_bytes):
+        """LDLJ should be a non-positive value."""
         response = client.post(
             "/api/upload",
             files={"file": ("test_log.parquet", parquet_bytes, "application/octet-stream")},
         )
-        rmse = response.json()["metrics"]["rmse"]
-        assert rmse >= 0.0, f"RMSE should be non-negative but got {rmse}"
+        ldlj = response.json()["metrics"]["smoothness_ldlj"]
+        assert isinstance(ldlj, float)
+        assert ldlj <= 0.0, f"LDLJ should be <= 0, got {ldlj}"
 
-    def test_upload_stress_is_normalised(self, client, parquet_bytes):
-        """Stress metric should be normalised between 0.0 and 1.0."""
+    def test_upload_symmetry_is_positive(self, client, parquet_bytes):
+        """Symmetry index should be >= 0."""
         response = client.post(
             "/api/upload",
             files={"file": ("test_log.parquet", parquet_bytes, "application/octet-stream")},
         )
-        stress = response.json()["metrics"]["stress"]
-        assert 0.0 <= stress <= 1.0, f"Stress {stress} is out of [0, 1] range"
+        symmetry = response.json()["metrics"]["symmetry"]
+        if symmetry is not None:
+            assert symmetry >= 0.0, f"Symmetry index should be >= 0, got {symmetry}"

@@ -1,54 +1,62 @@
-import math
-from typing import Dict, Any, Tuple
-from .baselines import CLASS_1_THRESHOLDS, CLASS_3_THRESHOLDS
+from typing import Dict, Tuple
+from .baselines import get_tier_thresholds
 
 class RuleBasedClassifier:
-    def __init__(self):
-        # We will score primarily against Class 1 thresholds to see how close to "Superhuman" the policy is.
-        self.ideal_thresholds = CLASS_1_THRESHOLDS
-        # We use Class 3 "acceptable" thresholds as our worst-case boundaries (score = 0)
-        self.worst_thresholds = CLASS_3_THRESHOLDS
-
-    def _score_metric(self, metric_name: str, actual_value: float) -> float:
+    def _score_metric(self, metric_name: str, actual_value: float, ideal_thresholds: Dict, worst_thresholds: Dict) -> float:
         """
         Calculate a normalized score (0.0 to 1.0) for a specific metric.
-        1.0 means it met or exceeded the ideal Superhuman limit.
-        0.0 means it performed worse than the Experimental acceptable limit.
+        Handles both "lower is better" and "higher is better" dynamically.
         """
-        if metric_name not in self.ideal_thresholds or metric_name not in self.worst_thresholds:
+        if metric_name not in ideal_thresholds or metric_name not in worst_thresholds:
             return 0.0
             
-        ideal = self.ideal_thresholds[metric_name]["ideal"]
-        worst = self.worst_thresholds[metric_name]["acceptable"]
+        ideal = ideal_thresholds[metric_name]["ideal"]
+        worst = worst_thresholds[metric_name]["acceptable"]
         
-        # If lower is better (which is true for RMSE, CoT, Latency, Stress, Variance)
-        if actual_value <= ideal:
-            return 1.0
-        elif actual_value >= worst:
-            return 0.0
+        # Check if lower is better (e.g. symmetry: ideal=2.0, worst=50.0)
+        if ideal < worst:
+            if actual_value <= ideal:
+                return 1.0
+            elif actual_value >= worst:
+                return 0.0
+            else:
+                return 1.0 - ((actual_value - ideal) / (worst - ideal))
+        # Check if higher is better (e.g. periodicity: ideal=0.9, worst=0.1)
         else:
-            # Linear interpolation between worst (0.0) and ideal (1.0)
-            return 1.0 - ((actual_value - ideal) / (worst - ideal))
+            if actual_value >= ideal:
+                return 1.0
+            elif actual_value <= worst:
+                return 0.0
+            else:
+                return (actual_value - worst) / (ideal - worst)
 
-    def classify(self, metrics: Dict[str, float]) -> Tuple[float, str]:
+    def classify(self, metrics: Dict[str, float], task: str = "general") -> Tuple[float, str]:
         """
         Classify a set of telemetry metrics.
         Returns a tuple: (overall_score, tier_label)
         """
+        ideal_thresholds = get_tier_thresholds("Superhuman/Industrial", task)
+        worst_thresholds = get_tier_thresholds("Experimental", task)
+        
         total_score = 0.0
         total_weight = 0.0
         
-        for metric_name, bound in self.ideal_thresholds.items():
+        for metric_name, bound in ideal_thresholds.items():
             if metric_name in metrics:
                 actual_val = metrics[metric_name]
+                if actual_val is None: # Handle unavailable metrics
+                    continue
+                    
                 weight = bound["weight"]
+                if weight <= 0:
+                    continue
                 
-                score = self._score_metric(metric_name, actual_val)
+                score = self._score_metric(metric_name, actual_val, ideal_thresholds, worst_thresholds)
                 
                 total_score += score * weight
                 total_weight += weight
                 
-        # Normalize in case some metrics were missing
+        # Normalize in case some metrics were missing or weight was 0
         if total_weight > 0:
             final_score = total_score / total_weight
         else:

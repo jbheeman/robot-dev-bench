@@ -1,0 +1,87 @@
+<!DOCTYPE html>
+<html>
+<body>
+    <button id="play-btn">Play</button>
+    <button id="pause-btn">Pause</button>
+    <input type="range" id="timeline" min="0" max="10" value="0">
+    <script>
+        let isPlaying = false;
+        let currentFrame = 0;
+        let playbackData = {
+            ticks: [0, 33, 66, 100, 133],
+            q: [[], [], [], [], []]
+        };
+        let robot = { joints: {} };
+        const G1_JOINT_ORDER = [];
+        let animationFrameId = null;
+
+        function updateRobotPose() {
+            if (!robot || !playbackData || playbackData.q.length === 0) return;
+            const qRow = playbackData.q[currentFrame];
+            for (let i = 0; i < G1_JOINT_ORDER.length && i < qRow.length; i++) {
+                // mock
+            }
+            console.log("Updated pose to frame", currentFrame);
+        }
+
+        function render() {
+            console.log("Rendered frame", currentFrame);
+        }
+
+        function pause() {
+            isPlaying = false;
+            if (animationFrameId) {
+                cancelAnimationFrame(animationFrameId);
+                animationFrameId = null;
+            }
+        }
+
+        function play() {
+            if (isPlaying || !playbackData || !playbackData.ticks || playbackData.ticks.length === 0) return;
+            isPlaying = true;
+            
+            if (currentFrame >= playbackData.ticks.length - 1) {
+                currentFrame = 0;
+            }
+            
+            let startTime = performance.now();
+            let startTickRelative = playbackData.ticks[currentFrame] - playbackData.ticks[0];
+            
+            function loop() {
+                if (!isPlaying) return;
+                
+                let time = performance.now();
+                let elapsedRealMs = (time - startTime) + startTickRelative;
+                let targetTick = playbackData.ticks[0] + elapsedRealMs;
+                
+                let advanced = false;
+                while (currentFrame < playbackData.ticks.length - 1 && playbackData.ticks[currentFrame + 1] <= targetTick) {
+                    currentFrame++;
+                    advanced = true;
+                }
+                
+                if (currentFrame >= playbackData.ticks.length - 1 && targetTick > playbackData.ticks[playbackData.ticks.length - 1]) {
+                    currentFrame = 0;
+                    document.getElementById('timeline').value = currentFrame;
+                    updateRobotPose();
+                    render();
+                    pause();
+                    return;
+                }
+                
+                if (advanced) {
+                    document.getElementById('timeline').value = currentFrame;
+                    updateRobotPose();
+                    render();
+                }
+                
+                animationFrameId = requestAnimationFrame(loop);
+            }
+            animationFrameId = requestAnimationFrame(loop);
+        }
+        
+        document.getElementById('play-btn').addEventListener('click', play);
+        document.getElementById('pause-btn').addEventListener('click', pause);
+    </script>
+</body>
+</html>

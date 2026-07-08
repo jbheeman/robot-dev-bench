@@ -18,7 +18,9 @@ dependencies = [
     "scikit-learn",
     "fastapi",
     "uvicorn",
-    "python-multipart"
+    "python-multipart",
+    "datasets",
+    "huggingface-hub"
 ]
 
 [project.optional-dependencies]

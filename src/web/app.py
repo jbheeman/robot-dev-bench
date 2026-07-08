@@ -22,6 +22,10 @@ def generate_mock_results(filename: str):
     # Simulate processing delay
     time.sleep(1.5)
     
+    # Seed the random number generator with the filename so the same file 
+    # always produces the same mock metrics and classification score.
+    random.seed(filename)
+    
     # Generate random metrics that could fall into any class
     metrics = {
         "rmse": round(random.uniform(0.001, 0.15), 4),
@@ -30,6 +34,9 @@ def generate_mock_results(filename: str):
         "stress": round(random.uniform(0.0, 0.8), 3),
         "imu_variance": round(random.uniform(0.0, 0.08), 4)
     }
+    
+    # Reset the seed so it doesn't affect other parts of the app if any
+    random.seed()
     
     # Use the real classification algorithm to score the mock metrics
     score, tier = classifier.classify(metrics)

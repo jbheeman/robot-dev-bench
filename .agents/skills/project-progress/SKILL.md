@@ -20,10 +20,11 @@ Based on the `project-context` skill, here is the current global status of the i
 
 ## Immediate Next Steps
 
-**Status: We are done with Part 5 & 6. The pipeline is nearly complete.**
+**Status: The pipeline is COMPLETE. All Parts 1–7 are implemented and validated.**
 
-Our focus will be on:
-*   **End-to-End Testing (Immediate Next Step):** Validate the full pipeline by uploading a real `.parquet` telemetry log and verifying that the dashboard returns sensible, non-random metric values and a correct classification tier.
+*   **Part 8: End-to-End Testing:** **[DONE]** A synthetic `.parquet` generator (`scripts/generate_test_parquet.py`) and a full integration test suite (`tests/test_integration.py`) were implemented. All 10 integration tests pass, validating the complete user journey from file upload through real metric extraction to classification output.
+
+Optional future work:
 *   **Optional Enhancement:** Add a data conversion utility (`scripts/convert_to_parquet.py`) that transforms raw MCAP or ROS2 bag files into the expected Parquet schema.
 
 ## Known Bugs / Blockers

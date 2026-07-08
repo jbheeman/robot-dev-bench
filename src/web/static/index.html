@@ -1,0 +1,93 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Unitree G1-Edu Telemetry Dashboard</title>
+    <!-- Google Fonts for modern typography -->
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Outfit:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="style.css">
+</head>
+<body>
+    <div class="background-elements">
+        <div class="glow-orb orb-1"></div>
+        <div class="glow-orb orb-2"></div>
+        <div class="glow-orb orb-3"></div>
+    </div>
+
+    <main class="dashboard-container">
+        <header class="dashboard-header">
+            <h1 class="gradient-text">Unitree G1-Edu Benchmarks</h1>
+            <p class="subtitle">Policy Classification & Telemetry Analysis</p>
+        </header>
+
+        <section class="upload-section">
+            <div id="drop-zone" class="drop-zone">
+                <input type="file" id="file-input" class="file-input" accept=".parquet" hidden>
+                <div class="drop-content">
+                    <svg class="upload-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                        <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"></path>
+                        <polyline points="17 8 12 3 7 8"></polyline>
+                        <line x1="12" y1="3" x2="12" y2="15"></line>
+                    </svg>
+                    <h3 class="drop-title">Drag & Drop Log File</h3>
+                    <p class="drop-desc">Upload a <strong>.parquet</strong> telemetry log to begin analysis</p>
+                    <button class="browse-btn" id="browse-btn">Browse Files</button>
+                </div>
+            </div>
+            <div id="loading-overlay" class="loading-overlay hidden">
+                <div class="spinner"></div>
+                <p>Analyzing Telemetry...</p>
+            </div>
+        </section>
+
+        <section id="results-section" class="results-section hidden">
+            <div class="results-grid">
+                <!-- Classification Card -->
+                <div class="glass-card classification-card">
+                    <h3 class="card-title">Policy Classification</h3>
+                    <div class="classification-content">
+                        <div class="score-ring">
+                            <span id="classification-score" class="score-value">--</span>
+                        </div>
+                        <div class="tier-info">
+                            <span class="tier-label">Tier</span>
+                            <h2 id="policy-tier" class="tier-value">--</h2>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Metrics Card -->
+                <div class="glass-card metrics-card">
+                    <h3 class="card-title">Key Metrics</h3>
+                    <div class="metrics-grid">
+                        <div class="metric-item">
+                            <span class="metric-label">RMSE</span>
+                            <span id="metric-rmse" class="metric-value">--</span>
+                        </div>
+                        <div class="metric-item">
+                            <span class="metric-label">Cost of Transport</span>
+                            <span id="metric-cot" class="metric-value">--</span>
+                        </div>
+                        <div class="metric-item">
+                            <span class="metric-label">Control Latency</span>
+                            <span id="metric-latency" class="metric-value">-- <small>ms</small></span>
+                        </div>
+                        <div class="metric-item">
+                            <span class="metric-label">Stress</span>
+                            <span id="metric-stress" class="metric-value">--</span>
+                        </div>
+                        <div class="metric-item full-width">
+                            <span class="metric-label">IMU Variance</span>
+                            <span id="metric-imu" class="metric-value">--</span>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </section>
+    </main>
+    <script src="script.js"></script>
+</body>
+</html>

@@ -24,8 +24,8 @@ document.addEventListener('DOMContentLoaded', () => {
     const elTransitionTime = document.getElementById('metric-transition-time');
 
     // Toggle logic for metrics visibility based on task
-    function toggleMetricsDisplay() {
-        const task = taskSelect.value;
+    function toggleMetricsDisplay(taskOverride) {
+        const task = taskOverride || taskSelect.value;
         const allCards = [
             'card-ldlj', 'card-sparc', 'card-symmetry', 'card-periodicity', 'card-rom',
             'card-flight-time', 'card-peak-z-accel', 'card-landing-jerk',
@@ -59,7 +59,6 @@ document.addEventListener('DOMContentLoaded', () => {
     }
 
     if (taskSelect) {
-        taskSelect.addEventListener('change', toggleMetricsDisplay);
         // Initial setup
         toggleMetricsDisplay();
     }
@@ -140,7 +139,17 @@ document.addEventListener('DOMContentLoaded', () => {
             const data = await response.json();
             
             if (data.status === 'success') {
+                const uploadedTask = taskSelect ? taskSelect.value : null;
+                toggleMetricsDisplay(uploadedTask);
                 updateDashboard(data);
+                
+                if (uploadedTask) {
+                    const badge = document.getElementById('evaluated-task-label');
+                    if (badge) {
+                        badge.textContent = uploadedTask;
+                        badge.classList.remove('hidden');
+                    }
+                }
                 
                 // Show success drop content
                 document.getElementById('drop-content-success').classList.remove('hidden');

@@ -309,6 +309,17 @@ body {
     border-radius: 2px;
 }
 
+.task-badge {
+    font-size: 0.85rem;
+    font-weight: 500;
+    padding: 0.25rem 0.75rem;
+    background: rgba(83, 165, 167, 0.2);
+    color: var(--primary);
+    border: 1px solid rgba(83, 165, 167, 0.4);
+    border-radius: 12px;
+    text-transform: capitalize;
+}
+
 /* Classification Specifics */
 .classification-content {
     display: flex;

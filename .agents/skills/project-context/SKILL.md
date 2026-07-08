@@ -54,3 +54,11 @@ Metrics must be clinically-grounded and dynamically tailored to the specific eva
 
 * **Primary Approach:** Supervised Rule-Based Scoring. Aggregate the engineered features (RMSE, CoT, latency, stability variance) against deterministic industry thresholds (referencing frameworks like Fraunhofer IPA).
 * **Secondary Approach (Exploratory):** Unsupervised clustering (K-Means or DBSCAN) to group control policies dynamically based on telemetry features, useful when comparing varying RL models.
+
+## 7. Dashboard Enhancements (Phase 4 Roadmap)
+
+To maximize analytical capabilities for researchers, the following extensions are planned for the web dashboard:
+* **Interactive Time-Series Charts (Telemetry Deep-Dive):** Plot raw telemetry (e.g., CoM oscillation, joint velocities) over time, synced to the 3D playback timeline to pinpoint failure modes.
+* **Anomaly Markers on the Timeline:** Visually inject red markers on the 3D scrubber at exact timestamps of critical events (e.g., peak Z-acceleration, maximum landing jerk).
+* **Side-by-Side Policy Comparison:** Enable A/B testing by uploading two `.parquet` files simultaneously to compare scores, deltas, and dual 3D playbacks.
+* **Export to PDF / CSV Report:** Provide a 1-click export of the classification score, metrics table, and metadata for standardized Hugging Face model cards or research papers.

@@ -46,7 +46,17 @@ Building off the recent architectural shift, the dashboard must dynamically disp
 3. Implemented backend logic for `Transitions` (CoM Oscillation, Transition Time).
 4. Polished UI color palette to match the dark slate and cyan/emerald theme requested by the user.
 
-## Known Bugs / Blockers
+## Phase 4 (PLANNED — Advanced Dashboard Features)
+
+Based on recent alignment, the following features are planned for implementation:
+1. **Interactive Time-Series Charts:** Adding libraries to plot raw telemetry synced with 3D playback.
+2. **Anomaly Markers:** Overlaying red timeline markers at critical events (e.g., peak acceleration, maximum jerk).
+3. **Side-by-Side Comparison:** Allowing dual `.parquet` uploads for A/B testing of policies.
+4. **PDF/CSV Export:** Generating downloadable reports for standard Hugging Face model cards.
+
+## Immediate Next Steps
+
+**Status: Awaiting user instruction to begin Phase 4.**
 
 *   *(Resolved)* **Schema Mismatch:** Fixed in Phase 2, Part 1. The dashboard now properly reads HuggingFace `.parquet` schemas.
 *   *(Resolved)* **Multi-Episode Playback Compression:** Multi-episode `.parquet` datasets (like `file-000.parquet` with 190+ episodes) were previously being squashed into a single playback timeline, causing the robot to rapidly jump across completely different episodes in high speed. `app.py` has been updated to automatically filter to just `episode_index == 0`, ensuring clean, coherent metrics and playback.

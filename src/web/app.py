@@ -5,6 +5,7 @@ from fastapi import FastAPI, UploadFile, File
 from fastapi.responses import JSONResponse
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel
+from src.classification.rules import RuleBasedClassifier
 
 app = FastAPI(title="Unitree G1-Edu Benchmarking Dashboard")
 
@@ -13,26 +14,32 @@ STATIC_DIR = os.path.join(os.path.dirname(__file__), "static")
 if not os.path.exists(STATIC_DIR):
     os.makedirs(STATIC_DIR)
 
+# Initialize our classifier
+classifier = RuleBasedClassifier()
+
 # Mock Data Generator
 def generate_mock_results(filename: str):
     # Simulate processing delay
     time.sleep(1.5)
     
-    classification_score = random.uniform(0.7, 0.99)
-    policy_tier = "Superhuman/Industrial" if classification_score > 0.9 else "Research" if classification_score > 0.8 else "Experimental"
+    # Generate random metrics that could fall into any class
+    metrics = {
+        "rmse": round(random.uniform(0.001, 0.15), 4),
+        "cot": round(random.uniform(0.05, 1.0), 3),
+        "latency_ms": round(random.uniform(0.5, 30.0), 2),
+        "stress": round(random.uniform(0.0, 0.8), 3),
+        "imu_variance": round(random.uniform(0.0, 0.08), 4)
+    }
+    
+    # Use the real classification algorithm to score the mock metrics
+    score, tier = classifier.classify(metrics)
     
     return {
         "filename": filename,
-        "metrics": {
-            "rmse": round(random.uniform(0.01, 0.1), 4),
-            "cot": round(random.uniform(0.1, 0.5), 3),
-            "latency_ms": round(random.uniform(1.0, 15.0), 2),
-            "stress": round(random.uniform(0.2, 0.8), 3),
-            "imu_variance": round(random.uniform(0.001, 0.05), 4)
-        },
+        "metrics": metrics,
         "classification": {
-            "score": round(classification_score, 3),
-            "tier": policy_tier
+            "score": round(score, 3),
+            "tier": tier
         },
         "status": "success"
     }

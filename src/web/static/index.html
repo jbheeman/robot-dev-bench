@@ -14,6 +14,10 @@
     <script src="https://unpkg.com/three@0.147.0/examples/js/loaders/STLLoader.js"></script>
     <script src="https://unpkg.com/three@0.147.0/examples/js/controls/OrbitControls.js"></script>
     <script src="https://unpkg.com/urdf-loader@0.10.3/umd/URDFLoader.js"></script>
+    <!-- Chart.js for Telemetry -->
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/html2canvas/1.4.1/html2canvas.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
 </head>
 <body>
     <div class="background-elements">
@@ -41,26 +45,54 @@
                 </select>
             </div>
             
-            <div id="drop-zone" class="drop-zone">
-                <input type="file" id="file-input" class="file-input" accept=".parquet" hidden>
-                <div class="drop-content" id="drop-content-default">
-                    <svg class="upload-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-                        <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"></path>
-                        <polyline points="17 8 12 3 7 8"></polyline>
-                        <line x1="12" y1="3" x2="12" y2="15"></line>
-                    </svg>
-                    <h3 class="drop-title">Drag & Drop Log File</h3>
-                    <p class="drop-desc">Upload a <strong>.parquet</strong> telemetry log to begin analysis</p>
-                    <button class="browse-btn" id="browse-btn">Browse Files</button>
+            <div style="display: flex; gap: 2rem; width: 100%;">
+                <div id="drop-zone" class="drop-zone" style="flex: 1;">
+                    <input type="file" id="file-input" class="file-input" accept=".parquet" hidden>
+                    <div class="drop-content" id="drop-content-default">
+                        <svg class="upload-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                            <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"></path>
+                            <polyline points="17 8 12 3 7 8"></polyline>
+                            <line x1="12" y1="3" x2="12" y2="15"></line>
+                        </svg>
+                        <h3 class="drop-title">Primary Policy</h3>
+                        <p class="drop-desc">Upload a <strong>.parquet</strong> telemetry log for the primary model</p>
+                        <button class="browse-btn" id="browse-btn">Browse Files</button>
+                    </div>
+                    <div class="drop-content hidden" id="drop-content-success">
+                        <svg class="upload-icon" style="color: var(--primary);" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                            <path d="M22 11.08V12a10 10 0 1 1-5.93-9.14"></path>
+                            <polyline points="22 4 12 14.01 9 11.01"></polyline>
+                        </svg>
+                        <h3 class="drop-title" id="uploaded-filename" style="max-width: 100%; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; padding: 0 10px;">filename.parquet</h3>
+                        <button class="browse-btn" id="change-file-btn" style="margin-top: 1rem;">Change Primary File</button>
+                    </div>
                 </div>
-                <div class="drop-content hidden" id="drop-content-success">
-                    <svg class="upload-icon" style="color: var(--primary);" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-                        <path d="M22 11.08V12a10 10 0 1 1-5.93-9.14"></path>
-                        <polyline points="22 4 12 14.01 9 11.01"></polyline>
-                    </svg>
-                    <h3 class="drop-title" id="uploaded-filename">filename.parquet</h3>
-                    <button class="browse-btn" id="change-file-btn" style="margin-top: 1rem;">Change File</button>
+
+                <div id="drop-zone-b" class="drop-zone" style="flex: 1;">
+                    <input type="file" id="file-input-b" class="file-input" accept=".parquet" hidden>
+                    <div class="drop-content" id="drop-content-default-b">
+                        <svg class="upload-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                            <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"></path>
+                            <polyline points="17 8 12 3 7 8"></polyline>
+                            <line x1="12" y1="3" x2="12" y2="15"></line>
+                        </svg>
+                        <h3 class="drop-title">Baseline Policy (Optional)</h3>
+                        <p class="drop-desc">Upload a second <strong>.parquet</strong> log for A/B comparison</p>
+                        <button class="browse-btn" id="browse-btn-b">Browse Baseline</button>
+                    </div>
+                    <div class="drop-content hidden" id="drop-content-success-b">
+                        <svg class="upload-icon" style="color: var(--secondary);" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                            <path d="M22 11.08V12a10 10 0 1 1-5.93-9.14"></path>
+                            <polyline points="22 4 12 14.01 9 11.01"></polyline>
+                        </svg>
+                        <h3 class="drop-title" id="uploaded-filename-b" style="max-width: 100%; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; padding: 0 10px;">filename.parquet</h3>
+                        <button class="browse-btn" id="change-file-btn-b" style="margin-top: 1rem;">Change Baseline File</button>
+                    </div>
                 </div>
+            </div>
+            
+            <div style="display: flex; justify-content: center; margin-top: 2rem;">
+                <button id="run-analysis-btn" class="browse-btn" style="padding: 1rem 3rem; font-size: 1.1rem; background-color: var(--primary); color: white; display: none;">Run Analysis</button>
             </div>
             <div id="loading-overlay" class="loading-overlay hidden">
                 <div class="spinner"></div>
@@ -69,6 +101,10 @@
         </section>
 
         <section id="results-section" class="results-section hidden">
+            <div style="display: flex; justify-content: flex-end; margin-bottom: 1rem; gap: 1rem;">
+                <button id="export-csv-btn" class="browse-btn" style="padding: 0.5rem 1.5rem; font-size: 0.9rem; margin: 0;">Export CSV</button>
+                <button id="export-pdf-btn" class="browse-btn" style="padding: 0.5rem 1.5rem; font-size: 0.9rem; margin: 0;">Export PDF</button>
+            </div>
             <div class="results-grid">
                 <!-- Classification Card -->
                 <div class="glass-card classification-card">
@@ -211,7 +247,45 @@
                     <div class="playback-controls">
                         <button id="play-btn" class="control-btn">Play</button>
                         <button id="pause-btn" class="control-btn">Pause</button>
-                        <input type="range" id="timeline" min="0" max="100" value="0" class="timeline">
+                        <div id="timeline-container" style="position: relative; width: 100%; display: flex; align-items: center;">
+                            <input type="range" id="timeline" min="0" max="100" value="0" class="timeline" style="width: 100%; z-index: 2;">
+                            <div id="anomaly-markers" style="position: absolute; top: 0; left: 0; right: 0; bottom: 0; pointer-events: none; z-index: 3;"></div>
+                        </div>
+                    </div>
+                </div>
+                
+                <!-- Telemetry Analysis Card -->
+                <div class="glass-card full-width" style="grid-column: 1 / -1; margin-top: 1.5rem;">
+                    <h3 class="card-title">Telemetry Analysis</h3>
+                    
+                    <div class="chart-controls" style="margin-bottom: 1rem; display: flex; gap: 1rem; flex-wrap: wrap;">
+                        <label style="color: var(--text-secondary); display: flex; align-items: center; gap: 0.5rem;">
+                            <input type="checkbox" id="toggle-velocity" checked> Global Velocity
+                        </label>
+                        <label style="color: var(--text-secondary); display: flex; align-items: center; gap: 0.5rem;">
+                            <input type="checkbox" id="toggle-acceleration" checked> Global Acceleration
+                        </label>
+                        <label style="color: var(--text-secondary); display: flex; align-items: center; gap: 0.5rem;">
+                            <input type="checkbox" id="toggle-jerk" checked> Global Jerk
+                        </label>
+                        <label style="color: var(--text-secondary); display: flex; align-items: center; gap: 0.5rem;">
+                            <input type="checkbox" id="toggle-com" checked> CoM Oscillation
+                        </label>
+                    </div>
+
+                    <div id="charts-container" style="display: flex; flex-direction: column; gap: 1rem;">
+                        <div class="chart-wrapper" id="wrapper-velocity" style="position: relative; height: 150px; width: 100%;">
+                            <canvas id="chart-velocity"></canvas>
+                        </div>
+                        <div class="chart-wrapper" id="wrapper-acceleration" style="position: relative; height: 150px; width: 100%;">
+                            <canvas id="chart-acceleration"></canvas>
+                        </div>
+                        <div class="chart-wrapper" id="wrapper-jerk" style="position: relative; height: 150px; width: 100%;">
+                            <canvas id="chart-jerk"></canvas>
+                        </div>
+                        <div class="chart-wrapper" id="wrapper-com" style="position: relative; height: 150px; width: 100%;">
+                            <canvas id="chart-com"></canvas>
+                        </div>
                     </div>
                 </div>
             </div>

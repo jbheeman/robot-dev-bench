@@ -117,9 +117,44 @@ async def upload_log_file(file: UploadFile = File(...), task: str = Form("genera
         else:
             playback_df = df
             
+        # Calculate timeseries data for charts
+        if 'tick' in playback_df and 'q' in playback_df and len(playback_df) > 1:
+            t_sec = playback_df['tick'].to_numpy() / 1000.0
+            dt = np.gradient(t_sec)
+            dt[dt == 0] = 1e-6
+            
+            q_mat = np.array(playback_df['q'].tolist())
+            v = np.gradient(q_mat, axis=0) / dt[:, np.newaxis]
+            a = np.gradient(v, axis=0) / dt[:, np.newaxis]
+            j = np.gradient(a, axis=0) / dt[:, np.newaxis]
+            
+            global_velocity = np.mean(np.abs(v), axis=1).tolist()
+            global_acceleration = np.mean(np.abs(a), axis=1).tolist()
+            global_jerk = np.mean(np.abs(j), axis=1).tolist()
+            com_oscillation = np.var(v, axis=1).tolist()
+            
+            anomalies = {
+                "Max Acceleration": int(np.argmax(global_acceleration)),
+                "Max Jerk": int(np.argmax(global_jerk)),
+                "Max CoM Wobble": int(np.argmax(com_oscillation))
+            }
+        else:
+            global_velocity = []
+            global_acceleration = []
+            global_jerk = []
+            com_oscillation = []
+            anomalies = {}
+            
         playback_data = {
             "ticks": [float(x) for x in playback_df['tick']] if 'tick' in playback_df else [],
-            "q": [[float(val) for val in row] for row in playback_df['q']] if 'q' in playback_df else []
+            "q": [[float(val) for val in row] for row in playback_df['q']] if 'q' in playback_df else [],
+            "timeseries": {
+                "velocity": global_velocity,
+                "acceleration": global_acceleration,
+                "jerk": global_jerk,
+                "com_oscillation": com_oscillation
+            },
+            "anomalies": anomalies
         }
 
         # Classify using real metrics unless it's testing only

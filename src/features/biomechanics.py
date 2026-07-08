@@ -133,7 +133,7 @@ def compute_symmetry(df: pd.DataFrame) -> Dict[str, Any]:
     
     si_values = []
     for l_val, r_val in zip(left_rom, right_rom):
-        denom = 0.5 * (l_val + r_val)
+        denom = max(l_val, r_val)
         if denom < 1e-3:
             continue
         si = (np.abs(l_val - r_val) / denom) * 100.0

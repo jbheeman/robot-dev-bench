@@ -16,14 +16,15 @@ Based on the `project-context` skill, here is the current global status of the i
 *   **Part 4: Feature Engineering (Key Metrics):** **[DONE]** Metric extractors for control precision (RMSE), Cost of Transport (CoT), control latency, hardware stress, and stability (IMU and CoM variance) are implemented in `metrics.py` and `stability.py` and covered by unit tests in `test_features.py`.
 *   **Part 5: Model Training Data & Baselines:** **[DONE]** Defined static baseline bounds for optimal RL/humanoid target limits and updated Class 2 and 3 with empirical data from the Humanoid Everyday Dataset (`baselines.py`).
 *   **Part 6: Classification Architecture:** **[DONE]** Implemented the supervised rule-based scorer in `rules.py` and integrated it.
-*   **Part 7: Web Infrastructure:** **[DONE]** Built a premium modern local dashboard (`src/web`) with a FastAPI backend to upload robot logs via drag-and-drop. **NOTE: Currently, the metrics (RMSE, CoT, etc.) displayed on the dashboard are randomly generated mock data for UI testing. However, the classification score itself uses the real rule-based engine on this mock data.**
+*   **Part 7: Web Infrastructure & Integration:** **[DONE]** Built a premium modern local dashboard (`src/web`) with a FastAPI backend. The `/api/upload` endpoint now accepts `.parquet` telemetry logs, parses them with `pd.read_parquet`, runs the full feature extraction pipeline (`metrics.py`, `stability.py`), and classifies the result with the real rule-based engine. Mock data generation has been fully removed.
 
 ## Immediate Next Steps
 
 **Status: We are done with Part 5 & 6. The pipeline is nearly complete.**
 
 Our focus will be on:
-*   **Finalizing Integration (Immediate Next Step):** Hook up the uploaded `.mcap` file parsing to `metrics.py` so the backend extracts *real* telemetry data instead of generating random mock data. This will tie everything together for end-to-end testing (from raw log to real classification output).
+*   **End-to-End Testing (Immediate Next Step):** Validate the full pipeline by uploading a real `.parquet` telemetry log and verifying that the dashboard returns sensible, non-random metric values and a correct classification tier.
+*   **Optional Enhancement:** Add a data conversion utility (`scripts/convert_to_parquet.py`) that transforms raw MCAP or ROS2 bag files into the expected Parquet schema.
 
 ## Known Bugs / Blockers
 

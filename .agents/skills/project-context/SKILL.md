@@ -16,7 +16,7 @@ Develop a post-run, digital benchmarking and classification tool for the Unitree
   * `rt/lowstate` (Proprioceptive/Hardware): Joint position $q$, velocity $\dot{q}$, motor torque $\tau$, IMU (RPY, linear acceleration), and hardware ticks.
   * `rt/highstate` (State Estimator/Locomotion): Base velocity, odometry, foot contact states.
 
-* **Storage Format:** Logs should be containerized using MCAP, HDF5, or Parquet for efficient post-run parsing and Sim-to-Real comparison.
+* **Storage Format:** Logs are containerized exclusively using Parquet (`.parquet`) for highly optimized, column-oriented post-run parsing and Sim-to-Real comparison in Pandas/ML pipelines.
 
 ## 3. Data Processing & Synchronization (Post-Run)
 

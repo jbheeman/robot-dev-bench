@@ -1,13 +1,12 @@
 import logging
 import time
-from typing import List
+from typing import List, Dict, Optional, Any
 
 # These imports assume unitree_sdk2_python is installed
 try:
-    from unitree_sdk2py.core.channel import ChannelFactoryInitialize
-    from unitree_sdk2py.core.channel import ChannelSubscriber
+    from unitree_sdk2py.core.channel import ChannelFactoryInitialize, ChannelSubscriber
     from unitree_sdk2py.idl.default import unitree_go_msg_dds__LowState_
-    from unitree_sdk2py.idl.default import unitree_go_msg_dds__HighState_
+    from unitree_sdk2py.idl.default import unitree_go_msg_dds__SportModeState_
 except ImportError:
     logging.warning("unitree_sdk2py not found. Please install from Unitree SDK2 GitHub.")
 
@@ -42,12 +41,12 @@ class UnitreeLiveSubscriber:
         self._is_recording = True
         
         try:
-            self._lowstate_sub = ChannelSubscriber("rt/lowstate", unitree_go_msg_dds__LowState_)
+            self._lowstate_sub = ChannelSubscriber("rt/lowstate", type(unitree_go_msg_dds__LowState_()))
             self._lowstate_sub.Init(self._lowstate_handler, 10)
             
             # Using placeholder types for highstate based on standard unitree schemas
             # Note: The exact IDL name for HighState might vary slightly (e.g. SportModeState)
-            self._highstate_sub = ChannelSubscriber("rt/highstate", unitree_go_msg_dds__HighState_)
+            self._highstate_sub = ChannelSubscriber("rt/highstate", type(unitree_go_msg_dds__SportModeState_()))
             self._highstate_sub.Init(self._highstate_handler, 10)
         except Exception as e:
             logger.error(f"Failed to initialize subscribers: {e}")
@@ -58,7 +57,7 @@ class UnitreeLiveSubscriber:
         logger.info("Stopping telemetry recording.")
         self._is_recording = False
 
-    def _lowstate_handler(self, msg: 'unitree_go_msg_dds__LowState_'):
+    def _lowstate_handler(self, msg: 'Any'):
         """Callback for rt/lowstate messages."""
         if not self._is_recording:
             return
@@ -82,7 +81,7 @@ class UnitreeLiveSubscriber:
         except Exception as e:
             logger.debug(f"Error parsing lowstate: {e}")
 
-    def _highstate_handler(self, msg: 'unitree_go_msg_dds__HighState_'):
+    def _highstate_handler(self, msg: 'Any'):
         """Callback for rt/highstate messages."""
         if not self._is_recording:
             return

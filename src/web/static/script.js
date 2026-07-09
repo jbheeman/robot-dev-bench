@@ -113,8 +113,10 @@ document.addEventListener('DOMContentLoaded', () => {
     function handleFileSelection(file, isBaseline, successId, defaultId, filenameId) {
         if (isBaseline) {
             fileBaseline = file;
+            document.getElementById('drop-zone-b').classList.add('has-file-b');
         } else {
             filePrimary = file;
+            document.getElementById('drop-zone').classList.add('has-file');
         }
         document.getElementById(defaultId).classList.add('hidden');
         document.getElementById(successId).classList.remove('hidden');
@@ -456,6 +458,35 @@ document.addEventListener('DOMContentLoaded', () => {
         btn.textContent = "Generating...";
         btn.disabled = true;
         
+        // Hide chart controls (checkboxes) for the PDF
+        const chartControls = document.querySelector('.chart-controls');
+        const originalDisplay = chartControls ? chartControls.style.display : '';
+        if (chartControls) chartControls.style.display = 'none';
+
+        // Clear chart tooltips and SHOW titles for the PDF
+        Object.values(charts).forEach(chart => {
+            if (chart.tooltip) {
+                chart.tooltip.setActiveElements([], {x: 0, y: 0});
+                chart.setActiveElements([]);
+            }
+            if (chart.options.plugins) {
+                let titleText = "Telemetry";
+                if (chart.data && chart.data.datasets && chart.data.datasets.length > 0) {
+                    titleText = chart.data.datasets[0].label.replace(' (Primary)', '');
+                }
+                chart.options.plugins.title = {
+                    display: true,
+                    text: titleText,
+                    color: '#f8fafc',
+                    font: { size: 14, family: "'Outfit', sans-serif" }
+                };
+            }
+            chart.update();
+        });
+        
+        // Wait a tiny bit for charts to re-render with titles
+        await new Promise(resolve => setTimeout(resolve, 100));
+
         try {
             const resultsGrid = document.querySelector('.results-grid');
             const canvas = await html2canvas(resultsGrid, {
@@ -503,6 +534,17 @@ document.addEventListener('DOMContentLoaded', () => {
         } finally {
             btn.textContent = "Export PDF";
             btn.disabled = false;
+            
+            // Restore chart controls
+            if (chartControls) chartControls.style.display = originalDisplay;
+            
+            // Hide titles again
+            Object.values(charts).forEach(chart => {
+                if (chart.options.plugins && chart.options.plugins.title) {
+                    chart.options.plugins.title.display = false;
+                    chart.update();
+                }
+            });
         }
     });
 });

@@ -154,11 +154,11 @@ body {
 }
 
 .drop-zone {
-    border: 2px dashed var(--border-color);
+    border: 2px dashed rgba(239, 68, 68, 0.6);
     border-radius: 20px;
     padding: 4rem 2rem;
     text-align: center;
-    background: var(--bg-panel);
+    background: rgba(239, 68, 68, 0.08);
     backdrop-filter: blur(12px);
     -webkit-backdrop-filter: blur(12px);
     transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
@@ -170,6 +170,16 @@ body {
     border-color: var(--primary);
     background: rgba(83, 165, 167, 0.1);
     transform: scale(1.02);
+}
+
+.drop-zone.has-file {
+    border-color: var(--success);
+    background: rgba(16, 185, 129, 0.08);
+}
+
+.drop-zone.has-file-b {
+    border-color: var(--secondary);
+    background: rgba(26, 150, 90, 0.08);
 }
 
 .drop-content {

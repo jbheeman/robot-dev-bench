@@ -56,8 +56,10 @@ Based on recent alignment, the following features are planned for implementation
 
 ## Immediate Next Steps
 
-**Status: Phase 4 is fully complete! All planned dashboard features have been implemented.**
+**Status: Phase 4 is fully complete! All planned dashboard features have been implemented, including the recent Log Library addition.**
 
 *   *(Resolved)* **Schema Mismatch:** Fixed in Phase 2, Part 1. The dashboard now properly reads HuggingFace `.parquet` schemas.
 *   *(Resolved)* **Multi-Episode Playback Compression:** Multi-episode `.parquet` datasets (like `file-000.parquet` with 190+ episodes) were previously being squashed into a single playback timeline, causing the robot to rapidly jump across completely different episodes in high speed. `app.py` has been updated to automatically filter to just `episode_index == 0`, ensuring clean, coherent metrics and playback.
 *   *(Resolved)* **UI Enhancements:** The PDF export was refined to hide active tooltips/checkboxes and seamlessly display Chart.js titles directly inside the graphs for clarity. The file upload drop zones were also styled to default to a clear red border and turn green upon successful upload to provide better user feedback.
+*   *(Resolved)* **Log Library (File Box):** Added a frontend-only session history vault that stores all uploaded logs during a session. Users can directly upload multiple logs from the library modal. After selecting logs, users can view them in a leaderboard and dynamically change the evaluated task via a dropdown (which uses a new `/api/reclassify` endpoint) to instantly recalculate and re-rank scores on the fly without re-uploading.
+*   *(Resolved)* **UI Adjustments:** Made the baseline policy upload box smaller than the primary policy box to emphasize that it is optional.

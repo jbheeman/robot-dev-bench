@@ -65,6 +65,7 @@ document.addEventListener('DOMContentLoaded', () => {
 
     let dataPrimary = null;
     let dataBaseline = null;
+    window.uploadedLogs = []; // Store logs for the session
 
     function preventDefaults(e) {
         e.preventDefault();
@@ -185,6 +186,10 @@ document.addEventListener('DOMContentLoaded', () => {
         if (!response.ok) throw new Error('Network response was not ok');
         const data = await response.json();
         if (data.status !== 'success') throw new Error(data.message || 'Upload failed');
+        
+        // Save to session history
+        window.uploadedLogs.push(data);
+        
         return data;
     }
 
@@ -546,5 +551,180 @@ document.addEventListener('DOMContentLoaded', () => {
                 }
             });
         }
+    });
+
+    // --- Log Library Logic ---
+    const logLibraryBtn = document.getElementById('log-library-btn');
+    const logLibraryModal = document.getElementById('log-library-modal');
+    const closeLibraryModalBtn = document.getElementById('close-modal-btn');
+    const logList = document.getElementById('log-list');
+    const rankLogsBtn = document.getElementById('rank-logs-btn');
+    const libraryUploadInput = document.getElementById('library-upload-input');
+    const libraryUploadBtn = document.getElementById('library-upload-btn');
+
+    if (libraryUploadBtn && libraryUploadInput) {
+        libraryUploadBtn.addEventListener('click', () => {
+            libraryUploadInput.click();
+        });
+
+        libraryUploadInput.addEventListener('change', async function() {
+            if (this.files.length > 0) {
+                const originalText = libraryUploadBtn.textContent;
+                libraryUploadBtn.textContent = `Uploading ${this.files.length}...`;
+                libraryUploadBtn.disabled = true;
+                
+                try {
+                    for (const file of this.files) {
+                        await fetchFile(file);
+                    }
+                    populateLogLibrary();
+                } catch (e) {
+                    alert('Failed to upload one or more logs: ' + e.message);
+                } finally {
+                    libraryUploadBtn.textContent = originalText;
+                    libraryUploadBtn.disabled = false;
+                    this.value = ''; // Reset input
+                }
+            }
+        });
+    }
+
+    const leaderboardModal = document.getElementById('leaderboard-modal');
+    const closeLeaderboardBtn = document.getElementById('close-leaderboard-btn');
+    const leaderboardList = document.getElementById('leaderboard-list');
+
+    function populateLogLibrary() {
+        logList.innerHTML = '';
+        if (window.uploadedLogs.length === 0) {
+            logList.innerHTML = '<p style="color: var(--text-secondary); text-align: center; margin-top: 2rem;">No logs uploaded yet.</p>';
+            rankLogsBtn.disabled = true;
+            return;
+        }
+
+        window.uploadedLogs.forEach((log, index) => {
+            const item = document.createElement('div');
+            item.className = 'log-item';
+            
+            const checkbox = document.createElement('input');
+            checkbox.type = 'checkbox';
+            checkbox.value = index;
+            checkbox.addEventListener('change', () => {
+                const checked = logList.querySelectorAll('input[type="checkbox"]:checked');
+                rankLogsBtn.disabled = checked.length === 0;
+                if (checkbox.checked) {
+                    item.classList.add('selected');
+                } else {
+                    item.classList.remove('selected');
+                }
+            });
+
+            item.addEventListener('click', (e) => {
+                if (e.target !== checkbox) {
+                    checkbox.checked = !checkbox.checked;
+                    checkbox.dispatchEvent(new Event('change'));
+                }
+            });
+
+            const details = document.createElement('div');
+            details.className = 'log-item-details';
+            details.innerHTML = `
+                <div class="log-item-name">${log.filename}</div>
+                <div class="log-item-meta">Ready for evaluation</div>
+            `;
+
+            item.appendChild(checkbox);
+            item.appendChild(details);
+            logList.appendChild(item);
+        });
+    }
+
+    logLibraryBtn.addEventListener('click', () => {
+        populateLogLibrary();
+        logLibraryModal.classList.remove('hidden');
+    });
+
+    closeLibraryModalBtn.addEventListener('click', () => {
+        logLibraryModal.classList.add('hidden');
+    });
+
+    let currentSelectedLogs = [];
+
+    function renderLeaderboard(selectedLogs) {
+        // Sort descending by score
+        selectedLogs.sort((a, b) => b.classification.score - a.classification.score);
+        
+        // Populate leaderboard
+        leaderboardList.innerHTML = '';
+        selectedLogs.forEach((log, index) => {
+            const item = document.createElement('div');
+            item.className = 'leaderboard-item';
+            item.innerHTML = `
+                <div class="leaderboard-rank">#${index + 1}</div>
+                <div class="leaderboard-item-details">
+                    <div class="leaderboard-item-name">${log.filename}</div>
+                    <div class="leaderboard-item-tier">Task: ${log.task} | Tier: ${log.classification.tier}</div>
+                </div>
+                <div class="leaderboard-item-score">${log.classification.score.toFixed(3)}</div>
+            `;
+            leaderboardList.appendChild(item);
+        });
+    }
+
+    rankLogsBtn.addEventListener('click', () => {
+        const checkedBoxes = logList.querySelectorAll('input[type="checkbox"]:checked');
+        currentSelectedLogs = Array.from(checkedBoxes).map(cb => window.uploadedLogs[cb.value]);
+        
+        const leaderboardTaskSelect = document.getElementById('leaderboard-task-select');
+        if (leaderboardTaskSelect && currentSelectedLogs.length > 0) {
+            leaderboardTaskSelect.value = currentSelectedLogs[0].task;
+        }
+
+        renderLeaderboard(currentSelectedLogs);
+
+        // Hide library modal, show leaderboard modal
+        logLibraryModal.classList.add('hidden');
+        leaderboardModal.classList.remove('hidden');
+    });
+
+    const leaderboardTaskSelect = document.getElementById('leaderboard-task-select');
+    if (leaderboardTaskSelect) {
+        leaderboardTaskSelect.addEventListener('change', async (e) => {
+            const newTask = e.target.value;
+            try {
+                leaderboardTaskSelect.disabled = true;
+                for (const log of currentSelectedLogs) {
+                    const response = await fetch('/api/reclassify', {
+                        method: 'POST',
+                        headers: {
+                            'Content-Type': 'application/json'
+                        },
+                        body: JSON.stringify({
+                            task: newTask,
+                            metrics: log.metrics
+                        })
+                    });
+                    
+                    if (!response.ok) throw new Error('Reclassification failed');
+                    const data = await response.json();
+                    
+                    // Update log object in place
+                    log.task = data.task;
+                    log.classification.score = data.score;
+                    log.classification.tier = data.tier;
+                }
+                
+                // Re-render with updated data
+                renderLeaderboard(currentSelectedLogs);
+                populateLogLibrary(); 
+            } catch (err) {
+                alert('Error reclassifying: ' + err.message);
+            } finally {
+                leaderboardTaskSelect.disabled = false;
+            }
+        });
+    }
+
+    closeLeaderboardBtn.addEventListener('click', () => {
+        leaderboardModal.classList.add('hidden');
     });
 });

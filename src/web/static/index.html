@@ -28,8 +28,18 @@
 
     <main class="dashboard-container">
         <header class="dashboard-header">
-            <h1 class="gradient-text">Unitree G1-Edu Benchmarks</h1>
-            <p class="subtitle">Policy Classification & Telemetry Analysis</p>
+            <div style="display: flex; justify-content: space-between; align-items: center; width: 100%;">
+                <div>
+                    <h1 class="gradient-text">Unitree G1-Edu Benchmarks</h1>
+                    <p class="subtitle">Policy Classification & Telemetry Analysis</p>
+                </div>
+                <button id="log-library-btn" class="browse-btn" style="margin: 0; display: flex; align-items: center;">
+                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="width: 18px; height: 18px; margin-right: 8px;">
+                        <path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z"></path>
+                    </svg>
+                    Log Library
+                </button>
+            </div>
         </header>
 
         <section class="upload-section">
@@ -46,7 +56,7 @@
             </div>
             
             <div style="display: flex; gap: 2rem; width: 100%;">
-                <div id="drop-zone" class="drop-zone" style="flex: 1;">
+                <div id="drop-zone" class="drop-zone" style="flex: 2;">
                     <input type="file" id="file-input" class="file-input" accept=".parquet" hidden>
                     <div class="drop-content" id="drop-content-default">
                         <svg class="upload-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
@@ -291,6 +301,55 @@
             </div>
         </section>
     </main>
+
+    <!-- Log Library Modal -->
+    <div id="log-library-modal" class="modal hidden">
+        <div class="modal-content glass-card">
+            <div class="modal-header">
+                <div style="display: flex; align-items: center; gap: 1rem;">
+                    <h2>Log Library</h2>
+                    <input type="file" id="library-upload-input" class="file-input" accept=".parquet" multiple hidden>
+                    <button id="library-upload-btn" class="browse-btn" style="margin: 0; padding: 0.5rem 1rem; font-size: 0.9rem;">
+                        Upload Logs
+                    </button>
+                </div>
+                <button id="close-modal-btn" class="close-btn">&times;</button>
+            </div>
+            <div class="modal-body">
+                <p style="color: var(--text-secondary); margin-bottom: 1rem;">Select logs to rank by classification score.</p>
+                <div id="log-list" class="log-list">
+                    <p style="color: var(--text-secondary); text-align: center; margin-top: 2rem;">No logs uploaded yet.</p>
+                </div>
+                <button id="rank-logs-btn" class="browse-btn" style="width: 100%; margin-top: 1.5rem;" disabled>Rank Selected</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Leaderboard Modal -->
+    <div id="leaderboard-modal" class="modal hidden">
+        <div class="modal-content glass-card" style="max-width: 600px;">
+            <div class="modal-header">
+                <div style="display: flex; align-items: center; gap: 1rem;">
+                    <h2>Ranked Leaderboard</h2>
+                    <select id="leaderboard-task-select" class="task-select" style="padding: 0.25rem 0.5rem; font-size: 0.9rem;">
+                        <option value="walking">Walking</option>
+                        <option value="reaching">Reaching</option>
+                        <option value="manipulation">Manipulation</option>
+                        <option value="jumping">Jumping</option>
+                        <option value="transitions">Transitions</option>
+                        <option value="testing">Testing Only</option>
+                    </select>
+                </div>
+                <button id="close-leaderboard-btn" class="close-btn">&times;</button>
+            </div>
+            <div class="modal-body">
+                <div id="leaderboard-list" class="leaderboard-list">
+                    <!-- Ranked logs populated here -->
+                </div>
+            </div>
+        </div>
+    </div>
+
     <script src="script.js"></script>
     <script src="viewer.js"></script>
 </body>

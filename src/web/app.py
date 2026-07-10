@@ -6,6 +6,7 @@ import pandas as pd
 from fastapi import FastAPI, UploadFile, File, Form, HTTPException
 from fastapi.responses import JSONResponse
 from fastapi.staticfiles import StaticFiles
+from pydantic import BaseModel
 
 from src.ingestion.schema_mapper import SchemaMapper
 from src.classification.rules import RuleBasedClassifier
@@ -67,6 +68,30 @@ def extract_metrics_from_dataframe(df: pd.DataFrame) -> dict:
         "com_oscillation": round(transitions.get("com_oscillation", 0.0), 3),
         "transition_time": round(transitions.get("transition_time", 0.0), 3),
     }
+
+
+class ReclassifyRequest(BaseModel):
+    task: str
+    metrics: dict
+
+@app.post("/api/reclassify")
+async def reclassify_metrics(req: ReclassifyRequest):
+    """
+    Re-evaluates an existing set of metrics against a new task profile.
+    """
+    if req.task == "testing":
+        return JSONResponse(content={
+            "score": 0.0,
+            "tier": "Testing (No Score)",
+            "task": req.task
+        })
+    
+    score, tier = classifier.classify(req.metrics, task=req.task)
+    return JSONResponse(content={
+        "score": round(score, 3),
+        "tier": tier,
+        "task": req.task
+    })
 
 
 @app.post("/api/upload")

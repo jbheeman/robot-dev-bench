@@ -15,7 +15,12 @@ dependencies = [
     "h5py",
     "mcap",
     "pyarrow",
-    "scikit-learn"
+    "scikit-learn",
+    "fastapi",
+    "uvicorn",
+    "python-multipart",
+    "datasets",
+    "huggingface-hub"
 ]
 
 [project.optional-dependencies]

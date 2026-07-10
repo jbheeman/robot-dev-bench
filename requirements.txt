@@ -18,3 +18,7 @@ jupyter  # for notebooks
 
 # Testing
 pytest
+-e third_party/unitree_sdk2_python
+fastapi
+uvicorn
+python-multipart

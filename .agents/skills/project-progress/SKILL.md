@@ -63,3 +63,30 @@ Based on recent alignment, the following features are planned for implementation
 *   *(Resolved)* **UI Enhancements:** The PDF export was refined to hide active tooltips/checkboxes and seamlessly display Chart.js titles directly inside the graphs for clarity. The file upload drop zones were also styled to default to a clear red border and turn green upon successful upload to provide better user feedback.
 *   *(Resolved)* **Log Library (File Box):** Added a frontend-only session history vault that stores all uploaded logs during a session. Users can directly upload multiple logs from the library modal. After selecting logs, users can view them in a leaderboard and dynamically change the evaluated task via a dropdown (which uses a new `/api/reclassify` endpoint) to instantly recalculate and re-rank scores on the fly without re-uploading.
 *   *(Resolved)* **UI Adjustments:** Made the baseline policy upload box smaller than the primary policy box to emphasize that it is optional.
+
+## Phase 5 (PLANNED — Pivot to Two-Camera Black-Box Benchmarking)
+
+We are fundamentally pivoting the architecture from ingesting internal telemetry `.parquet` logs to a passive, external, Visual "Black-Box" evaluation system. This enables evaluating any general-purpose robot without internal access, mapping performance to pediatric developmental milestones.
+
+**Key Decisions:**
+*   **Remove Legacy Data:** Completely remove the existing `.parquet` telemetry pipeline.
+*   **Computer Vision:** Two-camera stereo setup. OpenCV for calibration, **MMPose with a ViTPose++ backbone** for 2D-to-3D triangulation.
+*   *(Note: Acoustic inference and Conversational logic/STT evaluation have been skipped/deferred).*
+
+To ensure smooth execution, this phase is broken down into sequential steps:
+
+*   **Step 5.1: Repository Cleanup & Foundation:** Remove all `.parquet` logic and build basic video upload endpoints.
+*   **Step 5.2: Stereo Calibration & Mocking:** Build the synthetic checkerboard generator and OpenCV calibration pipeline.
+*   **Step 5.3: 3D Pose Triangulation:** Integrate MMPose/ViTPose++ and triangulate 2D joints into 3D world coordinates.
+
+## Immediate Next Steps
+
+**Status: The entire Phase 5 architectural pivot is complete.**
+
+*   *(Resolved)* **Step 5.1 (Cleanup):** Stripped out the existing `.parquet` logic from `src/ingestion`, `src/processing`, `src/features`, and `src/web`. Set up basic dual-camera MP4 upload endpoints.
+*   *(Resolved)* **Step 5.2 (Calibration):** Implemented the synthetic checkerboard video mock generator (`scripts/generate_mock_calibration.py`), the OpenCV stereo calibration module (`src/processing/calibration.py`), `/api/calibrate` and `/api/calibration_status` API endpoints, a calibration results visualisation UI (`calibration.html` with Three.js 3D camera placement), and 8 passing unit tests validating recovered R/T/K against ground truth.
+*   *(Resolved)* **Step 5.3 (3D Pose Triangulation):** Integrated MMPose with a ViTPose++ backbone for 2D pose estimation. Implemented 3D triangulation (`src/processing/triangulation.py`) using DLT. Refactored biomechanics to operate on 3D pose arrays. Wired the full pipeline into the `/api/upload_av` backend endpoint and restored the original `RuleBasedClassifier` metric scoring.
+*   *(Resolved)* **Step 6 (Verification & Finalization):** Built the final visualization UI on the dashboard. Modified the frontend to natively parse the 3D keypoints from the API and render a COCO skeleton in 3D using Three.js. Implemented a glassmorphism results dashboard to beautifully display the extracted biomechanical metrics and dynamic classification tier badge.
+*   *(Resolved)* **Step 7 (ChArUco Upgrade):** Upgraded the fragile standard checkerboard pipeline to use ChArUco boards. Re-wrote `calibration.py` to use `cv2.aruco.CharucoDetector`, added a `generate_charuco.py` script for users to print robust calibration boards, and updated the UI forms and documentation to accept the new `marker_size` parameter.
+
+*   *(Resolved)* **Step 8 (Legacy Log Pipeline Restoration):** Restored the old Parquet telemetry ingestion pipeline, 1D biomechanics extractors, and Log Library UI as a secondary 'Legacy Log Pipeline' tab, allowing users to evaluate either AV or Parquet logs simultaneously.

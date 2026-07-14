@@ -1,0 +1,159 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Camera Calibration Guide | Unitree G1-Edu Benchmarks</title>
+    <link href="https://fonts.googleapis.com/css2?family=Outfit:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="style.css">
+    <style>
+        .guide-container {
+            max-width: 900px;
+            margin: 3rem auto;
+            padding: 2rem;
+            display: flex;
+            flex-direction: column;
+            gap: 2rem;
+        }
+
+        .step-card {
+            background: rgba(255, 255, 255, 0.03);
+            border: 1px solid rgba(255, 255, 255, 0.05);
+            border-radius: 16px;
+            padding: 2rem;
+            display: flex;
+            gap: 2rem;
+            transition: transform 0.2s, background 0.2s;
+        }
+
+        .step-card:hover {
+            transform: translateY(-2px);
+            background: rgba(255, 255, 255, 0.05);
+        }
+
+        .step-number {
+            font-size: 4rem;
+            font-weight: 700;
+            background: linear-gradient(135deg, var(--primary), var(--secondary));
+            -webkit-background-clip: text;
+            -webkit-text-fill-color: transparent;
+            opacity: 0.8;
+            line-height: 1;
+        }
+
+        .step-content h3 {
+            font-size: 1.5rem;
+            margin-bottom: 1rem;
+            color: #fff;
+        }
+
+        .step-content p {
+            color: var(--text-secondary);
+            line-height: 1.6;
+            margin-bottom: 0.8rem;
+        }
+
+        .step-content ul {
+            color: var(--text-secondary);
+            margin-left: 1.5rem;
+            margin-bottom: 1rem;
+            line-height: 1.6;
+        }
+
+        .step-content li {
+            margin-bottom: 0.5rem;
+        }
+
+        .back-btn {
+            display: inline-flex;
+            align-items: center;
+            gap: 0.5rem;
+            color: var(--text-secondary);
+            text-decoration: none;
+            font-weight: 500;
+            transition: color 0.2s;
+            margin-bottom: 1rem;
+        }
+
+        .back-btn:hover {
+            color: var(--primary);
+        }
+    </style>
+</head>
+<body>
+    <div class="background-elements">
+        <div class="glow-orb orb-1"></div>
+        <div class="glow-orb orb-2"></div>
+        <div class="glow-orb orb-3"></div>
+    </div>
+
+    <main class="guide-container">
+        <a href="/calibration.html" class="back-btn">
+            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                <line x1="19" y1="12" x2="5" y2="12"></line>
+                <polyline points="12 19 5 12 12 5"></polyline>
+            </svg>
+            Back to Calibration
+        </a>
+
+        <div>
+            <h1 class="gradient-text" style="font-size: 3rem; margin-bottom: 1rem;">Stereo Calibration Guide</h1>
+            <p class="subtitle" style="font-size: 1.1rem;">To extract accurate 3D poses, the system must understand exactly how your two cameras are positioned relative to each other. Follow these steps to calibrate your stereo setup.</p>
+        </div>
+
+        <div class="step-card">
+            <div class="step-number">1</div>
+            <div class="step-content">
+                <h3>Prepare the ChArUco Board</h3>
+                <p>You need a standard ChArUco calibration pattern (a hybrid checkerboard with ArUco tags inside).</p>
+                <ul>
+                    <li>Run the <code>generate_charuco.py</code> script to create a high-res board, and print it on a stiff, completely flat surface (like foam board or a thick clipboard). A bent paper will ruin the calibration.</li>
+                    <li>Ensure it is a <strong>10x7</strong> ChArUco board (10 squares wide, 7 squares tall).</li>
+                    <li>Measure the exact size of one square edge in metres (e.g., 0.025m for a 2.5cm square).</li>
+                    <li>Measure the exact size of one inner black ArUco marker edge in metres (e.g., 0.015m for a 1.5cm marker).</li>
+                </ul>
+            </div>
+        </div>
+
+        <div class="step-card">
+            <div class="step-number">2</div>
+            <div class="step-content">
+                <h3>Position the Cameras</h3>
+                <p>Set up your two cameras covering the area where the robot will be moving.</p>
+                <ul>
+                    <li>Place Camera 1 (Primary) and Camera 2 (Secondary) on sturdy tripods.</li>
+                    <li>Make sure their fields of view overlap significantly.</li>
+                    <li><strong>Crucial:</strong> Once positioned, do not move, bump, or refocus the cameras! If they move even slightly, you must re-calibrate.</li>
+                </ul>
+            </div>
+        </div>
+
+        <div class="step-card">
+            <div class="step-number">3</div>
+            <div class="step-content">
+                <h3>Record the Calibration Video</h3>
+                <p>Simultaneously record a short video (about 10 to 30 seconds) on both cameras.</p>
+                <ul>
+                    <li>Hold the ChArUco board in the overlapping field of view so both cameras can clearly see it at the same time.</li>
+                    <li>Slowly move the board up, down, left, right, close to the cameras, and far away.</li>
+                    <li>Tilt the board slightly along the X, Y, and Z axes. Because of the ArUco tags, partial occlusion and glare is fine—as long as a few tags are visible, calibration will succeed!</li>
+                    <li>Ensure there is no motion blur. Move smoothly.</li>
+                </ul>
+            </div>
+        </div>
+
+        <div class="step-card">
+            <div class="step-number">4</div>
+            <div class="step-content">
+                <h3>Upload and Solve</h3>
+                <p>Upload the two resulting <code>.mp4</code> videos into the calibration dashboard.</p>
+                <ul>
+                    <li>The system will extract synchronized frames and hunt for the ChArUco markers to interpolate the sub-pixel corners.</li>
+                    <li>It computes the intrinsic parameters (lens distortion) and extrinsic parameters (rotation and translation matrices between the cameras).</li>
+                    <li>Once complete, you will see a 3D visualization of your camera setup. A Stereo RMS error of less than <strong>1.0</strong> is considered a good calibration.</li>
+                </ul>
+            </div>
+        </div>
+    </main>
+</body>
+</html>

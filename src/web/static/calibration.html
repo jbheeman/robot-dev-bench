@@ -1,0 +1,531 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Stereo Calibration — Unitree G1-Edu Benchmarking</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Outfit:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="style.css">
+    <style>
+        /* Page-specific overrides for the calibration page */
+        .calibration-grid {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 1.5rem;
+            margin-top: 1.5rem;
+        }
+        .calibration-grid .full-span {
+            grid-column: 1 / -1;
+        }
+        .param-table {
+            width: 100%;
+            border-collapse: collapse;
+            font-family: 'Outfit', monospace;
+        }
+        .param-table th, .param-table td {
+            padding: 0.6rem 1rem;
+            text-align: left;
+            border-bottom: 1px solid var(--border-color);
+        }
+        .param-table th {
+            color: var(--text-secondary);
+            font-weight: 500;
+            font-size: 0.85rem;
+            text-transform: uppercase;
+            letter-spacing: 0.05em;
+        }
+        .param-table td {
+            font-size: 0.95rem;
+        }
+        .param-table td.mono {
+            font-family: 'Courier New', monospace;
+            font-size: 0.85rem;
+            color: var(--primary);
+        }
+        .matrix-display {
+            font-family: 'Courier New', monospace;
+            font-size: 0.82rem;
+            line-height: 1.6;
+            color: var(--primary);
+            background: rgba(0,0,0,0.3);
+            padding: 1rem;
+            border-radius: 8px;
+            overflow-x: auto;
+            white-space: pre;
+        }
+        .quality-badge {
+            display: inline-block;
+            padding: 0.3rem 0.8rem;
+            border-radius: 20px;
+            font-weight: 600;
+            font-size: 0.85rem;
+        }
+        .quality-excellent {
+            background: rgba(16, 185, 129, 0.2);
+            color: #10b981;
+        }
+        .quality-good {
+            background: rgba(245, 158, 11, 0.2);
+            color: #f59e0b;
+        }
+        .quality-poor {
+            background: rgba(239, 68, 68, 0.2);
+            color: #ef4444;
+        }
+        .config-row {
+            display: flex;
+            gap: 1rem;
+            align-items: flex-end;
+            flex-wrap: wrap;
+            margin-bottom: 1rem;
+        }
+        .config-field {
+            display: flex;
+            flex-direction: column;
+            gap: 0.3rem;
+        }
+        .config-field label {
+            font-size: 0.85rem;
+            color: var(--text-secondary);
+        }
+        .config-field input {
+            padding: 0.5rem 0.8rem;
+            background: rgba(255,255,255,0.05);
+            border: 1px solid var(--border-color);
+            border-radius: 6px;
+            color: var(--text-primary);
+            font-family: var(--font-family);
+            font-size: 0.95rem;
+            width: 100px;
+        }
+        .config-field input:focus {
+            outline: none;
+            border-color: var(--primary);
+        }
+        #camera-3d-container {
+            width: 100%;
+            height: 300px;
+            border-radius: 8px;
+            overflow: hidden;
+            background: rgba(0,0,0,0.3);
+        }
+        .nav-link {
+            color: var(--primary);
+            text-decoration: none;
+            font-size: 0.95rem;
+            transition: opacity 0.2s;
+        }
+        .nav-link:hover {
+            opacity: 0.8;
+        }
+    </style>
+</head>
+<body>
+    <div class="background-elements">
+        <div class="glow-orb orb-1"></div>
+        <div class="glow-orb orb-2"></div>
+        <div class="glow-orb orb-3"></div>
+    </div>
+
+    <main class="dashboard-container">
+        <header class="dashboard-header" style="margin-bottom: 2rem;">
+            <div style="display: flex; justify-content: space-between; align-items: center; width: 100%;">
+                <div>
+                    <h1 class="gradient-text" style="font-size: 3rem; margin-bottom: 0.5rem;">Stereo Calibration</h1>
+                    <p class="subtitle" style="font-size: 1.1rem; max-width: 600px;">Compute camera intrinsics and extrinsics by uploading synchronized ChArUco videos. The recovered parameters will be saved for all subsequent pose extraction tasks.</p>
+                </div>
+                <div style="display: flex; flex-direction: column; align-items: flex-end; gap: 1rem;">
+                    <a href="/" class="nav-link">← Back to Dashboard</a>
+                    <a href="/calibration_guide.html" class="browse-btn" style="text-decoration: none; display: inline-flex; align-items: center; gap: 0.5rem; background: rgba(255,255,255,0.05); border: 1px solid rgba(255,255,255,0.1);">
+                        <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                            <circle cx="12" cy="12" r="10"></circle>
+                            <path d="M9.09 9a3 3 0 0 1 5.83 1c0 2-3 3-3 3"></path>
+                            <line x1="12" y1="17" x2="12.01" y2="17"></line>
+                        </svg>
+                        How to Calibrate
+                    </a>
+                </div>
+            </div>
+        </header>
+
+        <!-- Upload Section -->
+        <section class="upload-section">
+            <div class="config-row">
+                <div class="config-field">
+                    <label for="board-cols">Board Columns (Squares)</label>
+                    <input type="number" id="board-cols" value="10" min="3" max="20">
+                </div>
+                <div class="config-field">
+                    <label for="board-rows">Board Rows (Squares)</label>
+                    <input type="number" id="board-rows" value="7" min="3" max="20">
+                </div>
+                <div class="config-field">
+                    <label for="square-size">Square Size (m)</label>
+                    <input type="number" id="square-size" value="0.025" step="0.001">
+                </div>
+                <div class="config-field">
+                    <label for="marker-size">Marker Size (m)</label>
+                    <input type="number" id="marker-size" value="0.015" step="0.001">
+                </div>
+            </div>
+
+            <div style="display: flex; gap: 2rem; width: 100%;">
+                <!-- Left Calibration Video -->
+                <div id="drop-zone-cal-left" class="drop-zone" style="flex: 1;">
+                    <input type="file" id="cal-input-left" class="file-input" accept=".mp4" hidden>
+                    <div class="drop-content" id="cal-default-left">
+                        <svg class="upload-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                            <rect x="2" y="2" width="20" height="20" rx="2.18" ry="2.18"></rect>
+                            <line x1="7" y1="2" x2="7" y2="22"></line>
+                            <line x1="17" y1="2" x2="17" y2="22"></line>
+                            <line x1="2" y1="12" x2="22" y2="12"></line>
+                        </svg>
+                        <h3 class="drop-title">Camera 1 Calibration Video</h3>
+                        <p class="drop-desc">ChArUco board visible in the <strong>primary</strong> camera</p>
+                        <button class="browse-btn" id="browse-cal-left">Browse</button>
+                    </div>
+                    <div class="drop-content hidden" id="cal-success-left">
+                        <svg class="upload-icon" style="color: var(--primary);" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M22 11.08V12a10 10 0 1 1-5.93-9.14"></path><polyline points="22 4 12 14.01 9 11.01"></polyline></svg>
+                        <h3 class="drop-title" id="cal-filename-left">file.mp4</h3>
+                        <button class="browse-btn" id="cal-change-left" style="margin-top: 0.8rem;">Change</button>
+                    </div>
+                </div>
+                <!-- Right Calibration Video -->
+                <div id="drop-zone-cal-right" class="drop-zone" style="flex: 1;">
+                    <input type="file" id="cal-input-right" class="file-input" accept=".mp4" hidden>
+                    <div class="drop-content" id="cal-default-right">
+                        <svg class="upload-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                            <rect x="2" y="2" width="20" height="20" rx="2.18" ry="2.18"></rect>
+                            <line x1="7" y1="2" x2="7" y2="22"></line>
+                            <line x1="17" y1="2" x2="17" y2="22"></line>
+                            <line x1="2" y1="12" x2="22" y2="12"></line>
+                        </svg>
+                        <h3 class="drop-title">Camera 2 Calibration Video</h3>
+                        <p class="drop-desc">ChArUco board visible in the <strong>secondary</strong> camera</p>
+                        <button class="browse-btn" id="browse-cal-right">Browse</button>
+                    </div>
+                    <div class="drop-content hidden" id="cal-success-right">
+                        <svg class="upload-icon" style="color: var(--secondary);" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M22 11.08V12a10 10 0 1 1-5.93-9.14"></path><polyline points="22 4 12 14.01 9 11.01"></polyline></svg>
+                        <h3 class="drop-title" id="cal-filename-right">file.mp4</h3>
+                        <button class="browse-btn" id="cal-change-right" style="margin-top: 0.8rem;">Change</button>
+                    </div>
+                </div>
+            </div>
+
+            <div style="display: flex; justify-content: center; margin-top: 2rem;">
+                <button id="run-calibration-btn" class="browse-btn" style="padding: 1rem 3rem; font-size: 1.1rem; background-color: var(--primary); color: white; display: none;">Run Calibration</button>
+            </div>
+            <div id="loading-overlay" class="loading-overlay hidden">
+                <div class="spinner"></div>
+                <p>Computing stereo calibration (extracting corners, solving matrices)…</p>
+            </div>
+        </section>
+
+        <!-- Results Section -->
+        <section id="results-section" class="results-section hidden">
+            <div class="calibration-grid">
+                <!-- Quality Overview -->
+                <div class="glass-card full-span">
+                    <h3 class="card-title">Calibration Quality</h3>
+                    <div style="display: flex; gap: 2rem; align-items: center; margin-top: 1rem; flex-wrap: wrap;">
+                        <div>
+                            <span style="color: var(--text-secondary); font-size: 0.85rem;">Stereo RMS Error</span>
+                            <div style="font-size: 2rem; font-weight: 700;" id="rms-value">--</div>
+                        </div>
+                        <div>
+                            <span style="color: var(--text-secondary); font-size: 0.85rem;">Quality</span>
+                            <div id="quality-badge" class="quality-badge quality-good" style="margin-top: 0.3rem;">--</div>
+                        </div>
+                        <div>
+                            <span style="color: var(--text-secondary); font-size: 0.85rem;">Valid Pairs</span>
+                            <div style="font-size: 2rem; font-weight: 700;" id="valid-pairs">--</div>
+                        </div>
+                        <div>
+                            <span style="color: var(--text-secondary); font-size: 0.85rem;">Camera 1 RMS</span>
+                            <div style="font-size: 1.2rem; font-weight: 500;" id="rms-left">--</div>
+                        </div>
+                        <div>
+                            <span style="color: var(--text-secondary); font-size: 0.85rem;">Camera 2 RMS</span>
+                            <div style="font-size: 1.2rem; font-weight: 500;" id="rms-right">--</div>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Translation Vector -->
+                <div class="glass-card">
+                    <h3 class="card-title">Translation Vector (T)</h3>
+                    <p style="color: var(--text-secondary); font-size: 0.85rem; margin-bottom: 0.8rem;">Distance between camera centres in metres</p>
+                    <table class="param-table">
+                        <tr><th>Axis</th><th>Value (m)</th></tr>
+                        <tr><td>X (Horizontal)</td><td class="mono" id="t-x">--</td></tr>
+                        <tr><td>Y (Vertical)</td><td class="mono" id="t-y">--</td></tr>
+                        <tr><td>Z (Depth)</td><td class="mono" id="t-z">--</td></tr>
+                    </table>
+                    <p style="margin-top: 0.8rem; font-size: 0.9rem; color: var(--text-secondary);">
+                        Baseline: <strong id="baseline-dist" style="color: var(--primary);">--</strong> m
+                    </p>
+                </div>
+
+                <!-- Rotation Matrix -->
+                <div class="glass-card">
+                    <h3 class="card-title">Rotation Matrix (R)</h3>
+                    <p style="color: var(--text-secondary); font-size: 0.85rem; margin-bottom: 0.8rem;">Relative orientation between the two cameras</p>
+                    <div class="matrix-display" id="rotation-matrix">--</div>
+                </div>
+
+                <!-- Left Intrinsics -->
+                <div class="glass-card">
+                    <h3 class="card-title">Camera 1 Intrinsics (K)</h3>
+                    <div class="matrix-display" id="k-left">--</div>
+                </div>
+
+                <!-- Right Intrinsics -->
+                <div class="glass-card">
+                    <h3 class="card-title">Camera 2 Intrinsics (K)</h3>
+                    <div class="matrix-display" id="k-right">--</div>
+                </div>
+
+                <!-- 3D Camera Placement Visualisation -->
+                <div class="glass-card full-span">
+                    <h3 class="card-title">3D Camera Placement</h3>
+                    <p style="color: var(--text-secondary); font-size: 0.85rem; margin-bottom: 0.8rem;">Visualisation of the relative camera positions based on the computed R and T</p>
+                    <div id="camera-3d-container"></div>
+                </div>
+            </div>
+        </section>
+    </main>
+
+    <script src="https://unpkg.com/three@0.147.0/build/three.min.js"></script>
+    <script src="https://unpkg.com/three@0.147.0/examples/js/controls/OrbitControls.js"></script>
+    <script>
+    document.addEventListener('DOMContentLoaded', () => {
+        let fileLeft = null;
+        let fileRight = null;
+
+        function preventDefaults(e) { e.preventDefault(); e.stopPropagation(); }
+
+        function setupDrop(zoneId, inputId, browseId, changeId, successId, defaultId, filenameId, isRight) {
+            const zone = document.getElementById(zoneId);
+            const input = document.getElementById(inputId);
+            const browseBtn = document.getElementById(browseId);
+            const changeBtn = document.getElementById(changeId);
+            if (!zone) return;
+
+            ['dragenter','dragover','dragleave','drop'].forEach(e => zone.addEventListener(e, preventDefaults));
+            ['dragenter','dragover'].forEach(e => zone.addEventListener(e, () => zone.classList.add('active-drop')));
+            ['dragleave','drop'].forEach(e => zone.addEventListener(e, () => zone.classList.remove('active-drop')));
+
+            zone.addEventListener('drop', e => {
+                if (e.dataTransfer.files.length > 0) selectFile(e.dataTransfer.files[0], isRight, successId, defaultId, filenameId, zoneId);
+            });
+            browseBtn.addEventListener('click', () => input.click());
+            if (changeBtn) changeBtn.addEventListener('click', () => input.click());
+            input.addEventListener('change', function() {
+                if (this.files.length > 0) selectFile(this.files[0], isRight, successId, defaultId, filenameId, zoneId);
+            });
+        }
+
+        function selectFile(file, isRight, successId, defaultId, filenameId, zoneId) {
+            if (!file.name.endsWith('.mp4')) { alert('Only .mp4 files supported.'); return; }
+            if (isRight) { fileRight = file; } else { fileLeft = file; }
+            document.getElementById(zoneId).classList.add(isRight ? 'has-file-b' : 'has-file');
+            document.getElementById(defaultId).classList.add('hidden');
+            document.getElementById(successId).classList.remove('hidden');
+            document.getElementById(filenameId).textContent = file.name;
+            if (fileLeft && fileRight) document.getElementById('run-calibration-btn').style.display = 'block';
+        }
+
+        setupDrop('drop-zone-cal-left','cal-input-left','browse-cal-left','cal-change-left','cal-success-left','cal-default-left','cal-filename-left', false);
+        setupDrop('drop-zone-cal-right','cal-input-right','browse-cal-right','cal-change-right','cal-success-right','cal-default-right','cal-filename-right', true);
+
+        document.getElementById('run-calibration-btn').addEventListener('click', async () => {
+            if (!fileLeft || !fileRight) return;
+            const loading = document.getElementById('loading-overlay');
+            const results = document.getElementById('results-section');
+            results.classList.add('hidden');
+            loading.classList.remove('hidden');
+
+            try {
+                const fd = new FormData();
+                fd.append('left_video', fileLeft);
+                fd.append('right_video', fileRight);
+                fd.append('board_cols', document.getElementById('board-cols').value);
+                fd.append('board_rows', document.getElementById('board-rows').value);
+                fd.append('square_size', document.getElementById('square-size').value);
+                fd.append('marker_size', document.getElementById('marker-size').value);
+
+                const resp = await fetch('/api/calibrate', { method: 'POST', body: fd });
+                const data = await resp.json();
+                if (data.status !== 'success') throw new Error(data.message || 'Calibration failed');
+
+                loading.classList.add('hidden');
+                results.classList.remove('hidden');
+                // Render results AFTER unhiding so the 3D container has actual width/height
+                renderResults(data.calibration);
+            } catch (err) {
+                alert('Calibration error: ' + err.message);
+                loading.classList.add('hidden');
+            }
+        });
+
+        function formatMatrix(arr) {
+            if (!arr) return '--';
+            return arr.map(row => row.map(v => v.toFixed(6).padStart(12)).join('')).join('\n');
+        }
+
+        function renderResults(cal) {
+            // RMS & quality
+            const rms = cal.rms_stereo;
+            document.getElementById('rms-value').textContent = rms.toFixed(4);
+            document.getElementById('valid-pairs').textContent = cal.num_valid_pairs;
+            document.getElementById('rms-left').textContent = cal.rms_left.toFixed(4);
+            document.getElementById('rms-right').textContent = cal.rms_right.toFixed(4);
+
+            const badge = document.getElementById('quality-badge');
+            if (rms < 0.5) { badge.textContent = 'Excellent'; badge.className = 'quality-badge quality-excellent'; }
+            else if (rms < 1.0) { badge.textContent = 'Good'; badge.className = 'quality-badge quality-good'; }
+            else { badge.textContent = 'Poor — Recalibrate'; badge.className = 'quality-badge quality-poor'; }
+
+            // Translation
+            const T = cal.T;
+            document.getElementById('t-x').textContent = T[0][0].toFixed(6);
+            document.getElementById('t-y').textContent = T[1][0].toFixed(6);
+            document.getElementById('t-z').textContent = T[2][0].toFixed(6);
+            const baseline = Math.sqrt(T[0][0]**2 + T[1][0]**2 + T[2][0]**2);
+            document.getElementById('baseline-dist').textContent = baseline.toFixed(4);
+
+            // Matrices
+            document.getElementById('rotation-matrix').textContent = formatMatrix(cal.R);
+            document.getElementById('k-left').textContent = formatMatrix(cal.K_left);
+            document.getElementById('k-right').textContent = formatMatrix(cal.K_right);
+
+            // 3D visualisation
+            render3DCameras(cal);
+        }
+
+        function render3DCameras(cal) {
+            const container = document.getElementById('camera-3d-container');
+            container.innerHTML = '';
+
+            const scene = new THREE.Scene();
+            const camera = new THREE.PerspectiveCamera(60, container.clientWidth / container.clientHeight, 0.01, 100);
+            const renderer = new THREE.WebGLRenderer({ antialias: true, alpha: true });
+            renderer.setSize(container.clientWidth, container.clientHeight);
+            renderer.setClearColor(0x000000, 0);
+            container.appendChild(renderer.domElement);
+
+            const controls = new THREE.OrbitControls(camera, renderer.domElement);
+            controls.enableDamping = true;
+
+            // Grid
+            const grid = new THREE.GridHelper(1, 10, 0x444444, 0x333333);
+            grid.rotation.x = Math.PI / 2;
+            scene.add(grid);
+
+            // Left camera (cyan) at origin
+            const leftGeom = new THREE.ConeGeometry(0.02, 0.06, 4);
+            leftGeom.rotateX(-Math.PI / 2);
+            const leftMat = new THREE.MeshBasicMaterial({ color: 0x53a5a7 });
+            const leftMesh = new THREE.Mesh(leftGeom, leftMat);
+            scene.add(leftMesh);
+
+            // Left camera frustum
+            const leftFrustum = createFrustum(0x53a5a7);
+            scene.add(leftFrustum);
+
+            // Right camera (green) at T position
+            const T = cal.T;
+            const rightGeom = new THREE.ConeGeometry(0.02, 0.06, 4);
+            rightGeom.rotateX(-Math.PI / 2);
+            const rightMat = new THREE.MeshBasicMaterial({ color: 0x1a965a });
+            const rightMesh = new THREE.Mesh(rightGeom, rightMat);
+            rightMesh.position.set(T[0][0], T[1][0], T[2][0]);
+
+            // Apply rotation to right camera
+            if (cal.R) {
+                const R = cal.R;
+                const m = new THREE.Matrix4();
+                m.set(
+                    R[0][0], R[0][1], R[0][2], T[0][0],
+                    R[1][0], R[1][1], R[1][2], T[1][0],
+                    R[2][0], R[2][1], R[2][2], T[2][0],
+                    0, 0, 0, 1
+                );
+                rightMesh.setRotationFromMatrix(m);
+            }
+            scene.add(rightMesh);
+
+            // Right camera frustum
+            const rightFrustum = createFrustum(0x1a965a);
+            rightFrustum.position.copy(rightMesh.position);
+            rightFrustum.rotation.copy(rightMesh.rotation);
+            scene.add(rightFrustum);
+
+            // Baseline line
+            const lineGeom = new THREE.BufferGeometry().setFromPoints([
+                new THREE.Vector3(0, 0, 0),
+                new THREE.Vector3(T[0][0], T[1][0], T[2][0])
+            ]);
+            const lineMat = new THREE.LineBasicMaterial({ color: 0xffffff, opacity: 0.5, transparent: true });
+            scene.add(new THREE.Line(lineGeom, lineMat));
+
+            // Labels (simple sprites)
+            scene.add(makeLabel('L', 0, 0.04, 0, 0x53a5a7));
+            scene.add(makeLabel('R', T[0][0], T[1][0] + 0.04, T[2][0], 0x1a965a));
+
+            camera.position.set(T[0][0] / 2, 0.5, 1.5);
+            controls.target.set(T[0][0] / 2, T[1][0] / 2, T[2][0] / 2);
+            camera.lookAt(T[0][0] / 2, T[1][0] / 2, T[2][0] / 2);
+
+            function animate() {
+                requestAnimationFrame(animate);
+                controls.update();
+                renderer.render(scene, camera);
+            }
+            animate();
+        }
+
+        function createFrustum(color) {
+            const size = 0.04;
+            const depth = 0.08;
+            const pts = [
+                new THREE.Vector3(-size, -size, depth),
+                new THREE.Vector3( size, -size, depth),
+                new THREE.Vector3( size,  size, depth),
+                new THREE.Vector3(-size,  size, depth),
+            ];
+            const geom = new THREE.BufferGeometry();
+            const vertices = [];
+            pts.forEach(p => { vertices.push(0,0,0, p.x, p.y, p.z); });
+            for (let i = 0; i < 4; i++) {
+                const next = (i + 1) % 4;
+                vertices.push(pts[i].x, pts[i].y, pts[i].z, pts[next].x, pts[next].y, pts[next].z);
+            }
+            geom.setAttribute('position', new THREE.Float32BufferAttribute(vertices, 3));
+            return new THREE.LineSegments(geom, new THREE.LineBasicMaterial({ color, opacity: 0.6, transparent: true }));
+        }
+
+        function makeLabel(text, x, y, z, color) {
+            const canvas = document.createElement('canvas');
+            canvas.width = 64; canvas.height = 64;
+            const ctx = canvas.getContext('2d');
+            ctx.fillStyle = '#' + color.toString(16).padStart(6, '0');
+            ctx.font = 'bold 40px Outfit';
+            ctx.textAlign = 'center';
+            ctx.textBaseline = 'middle';
+            ctx.fillText(text, 32, 32);
+            const texture = new THREE.CanvasTexture(canvas);
+            const mat = new THREE.SpriteMaterial({ map: texture, transparent: true });
+            const sprite = new THREE.Sprite(mat);
+            sprite.position.set(x, y, z);
+            sprite.scale.set(0.04, 0.04, 1);
+            return sprite;
+        }
+
+        // Auto-load removed so the page clears on refresh as requested
+    });
+    </script>
+</body>
+</html>

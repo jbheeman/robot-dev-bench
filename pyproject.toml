@@ -20,7 +20,8 @@ dependencies = [
     "uvicorn",
     "python-multipart",
     "datasets",
-    "huggingface-hub"
+    "huggingface-hub",
+    "opencv-python"
 ]
 
 [project.optional-dependencies]

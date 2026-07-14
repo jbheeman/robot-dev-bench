@@ -3,21 +3,15 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Unitree G1-Edu Telemetry Dashboard</title>
+    <title>Unitree G1-Edu Benchmarking Dashboard (AV Mode)</title>
     <!-- Google Fonts for modern typography -->
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
     <link href="https://fonts.googleapis.com/css2?family=Outfit:wght@300;400;500;600;700&display=swap" rel="stylesheet">
     <link rel="stylesheet" href="style.css">
-    <!-- Three.js and URDF Loader -->
-    <script src="https://unpkg.com/three@0.147.0/build/three.min.js"></script>
-    <script src="https://unpkg.com/three@0.147.0/examples/js/loaders/STLLoader.js"></script>
-    <script src="https://unpkg.com/three@0.147.0/examples/js/controls/OrbitControls.js"></script>
-    <script src="https://unpkg.com/urdf-loader@0.10.3/umd/URDFLoader.js"></script>
-    <!-- Chart.js for Telemetry -->
-    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
-    <script src="https://cdnjs.cloudflare.com/ajax/libs/html2canvas/1.4.1/html2canvas.min.js"></script>
-    <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
+    <!-- Load Three.js and OrbitControls -->
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/controls/OrbitControls.js"></script>
 </head>
 <body>
     <div class="background-elements">
@@ -31,14 +25,13 @@
             <div style="display: flex; justify-content: space-between; align-items: center; width: 100%;">
                 <div>
                     <h1 class="gradient-text">Unitree G1-Edu Benchmarks</h1>
-                    <p class="subtitle">Policy Classification & Telemetry Analysis</p>
+                    <p class="subtitle">External AV Black-Box Evaluation System</p>
                 </div>
-                <button id="log-library-btn" class="browse-btn" style="margin: 0; display: flex; align-items: center;">
-                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="width: 18px; height: 18px; margin-right: 8px;">
-                        <path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z"></path>
-                    </svg>
-                    Log Library
-                </button>
+                <a href="/calibration.html" style="color: var(--primary); text-decoration: none; font-size: 0.95rem; transition: opacity 0.2s;">⚙ Calibrate Cameras</a>
+            </div>
+            <div style="display: flex; gap: 1rem; margin-top: 1rem;">
+                <a href="/" style="padding: 0.5rem 1rem; background: var(--primary); color: white; border-radius: 8px; text-decoration: none; font-weight: 500;">Video Pipeline</a>
+                <a href="/legacy.html" style="padding: 0.5rem 1rem; background: rgba(255,255,255,0.05); color: var(--text-secondary); border-radius: 8px; text-decoration: none; font-weight: 500; border: 1px solid rgba(255,255,255,0.1);">Legacy Log Pipeline</a>
             </div>
         </header>
 
@@ -51,306 +44,153 @@
                     <option value="manipulation">Manipulation</option>
                     <option value="jumping">Jumping</option>
                     <option value="transitions">Transitions</option>
-                    <option value="testing">Testing Only (No Scoring)</option>
                 </select>
             </div>
             
             <div style="display: flex; gap: 2rem; width: 100%;">
-                <div id="drop-zone" class="drop-zone" style="flex: 2;">
-                    <input type="file" id="file-input" class="file-input" accept=".parquet" hidden>
-                    <div class="drop-content" id="drop-content-default">
+                <!-- Left Camera Drop Zone -->
+                <div id="drop-zone-left" class="drop-zone" style="flex: 1;">
+                    <input type="file" id="file-input-left" class="file-input" accept=".mp4" hidden>
+                    <div class="drop-content" id="drop-content-default-left">
                         <svg class="upload-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-                            <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"></path>
-                            <polyline points="17 8 12 3 7 8"></polyline>
-                            <line x1="12" y1="3" x2="12" y2="15"></line>
+                            <rect x="2" y="2" width="20" height="20" rx="2.18" ry="2.18"></rect>
+                            <line x1="7" y1="2" x2="7" y2="22"></line>
+                            <line x1="17" y1="2" x2="17" y2="22"></line>
+                            <line x1="2" y1="12" x2="22" y2="12"></line>
+                            <line x1="2" y1="7" x2="7" y2="7"></line>
+                            <line x1="2" y1="17" x2="7" y2="17"></line>
+                            <line x1="17" y1="17" x2="22" y2="17"></line>
+                            <line x1="17" y1="7" x2="22" y2="7"></line>
                         </svg>
-                        <h3 class="drop-title">Primary Policy</h3>
-                        <p class="drop-desc">Upload a <strong>.parquet</strong> telemetry log for the primary model</p>
-                        <button class="browse-btn" id="browse-btn">Browse Files</button>
+                        <h3 class="drop-title">Camera 1 Feed</h3>
+                        <p class="drop-desc">Upload a <strong>.mp4</strong> video from the primary camera</p>
+                        <button class="browse-btn" id="browse-btn-left">Browse Camera 1</button>
                     </div>
-                    <div class="drop-content hidden" id="drop-content-success">
+                    <div class="drop-content hidden" id="drop-content-success-left">
                         <svg class="upload-icon" style="color: var(--primary);" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
                             <path d="M22 11.08V12a10 10 0 1 1-5.93-9.14"></path>
                             <polyline points="22 4 12 14.01 9 11.01"></polyline>
                         </svg>
-                        <h3 class="drop-title" id="uploaded-filename" style="max-width: 100%; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; padding: 0 10px;">filename.parquet</h3>
-                        <button class="browse-btn" id="change-file-btn" style="margin-top: 1rem;">Change Primary File</button>
+                        <h3 class="drop-title" id="uploaded-filename-left" style="max-width: 100%; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; padding: 0 10px;">filename.mp4</h3>
+                        <button class="browse-btn" id="change-file-btn-left" style="margin-top: 1rem;">Change Camera 1 File</button>
                     </div>
                 </div>
 
-                <div id="drop-zone-b" class="drop-zone" style="flex: 1;">
-                    <input type="file" id="file-input-b" class="file-input" accept=".parquet" hidden>
-                    <div class="drop-content" id="drop-content-default-b">
+                <!-- Right Camera Drop Zone -->
+                <div id="drop-zone-right" class="drop-zone" style="flex: 1;">
+                    <input type="file" id="file-input-right" class="file-input" accept=".mp4" hidden>
+                    <div class="drop-content" id="drop-content-default-right">
                         <svg class="upload-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-                            <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"></path>
-                            <polyline points="17 8 12 3 7 8"></polyline>
-                            <line x1="12" y1="3" x2="12" y2="15"></line>
+                            <rect x="2" y="2" width="20" height="20" rx="2.18" ry="2.18"></rect>
+                            <line x1="7" y1="2" x2="7" y2="22"></line>
+                            <line x1="17" y1="2" x2="17" y2="22"></line>
+                            <line x1="2" y1="12" x2="22" y2="12"></line>
+                            <line x1="2" y1="7" x2="7" y2="7"></line>
+                            <line x1="2" y1="17" x2="7" y2="17"></line>
+                            <line x1="17" y1="17" x2="22" y2="17"></line>
+                            <line x1="17" y1="7" x2="22" y2="7"></line>
                         </svg>
-                        <h3 class="drop-title">Baseline Policy (Optional)</h3>
-                        <p class="drop-desc">Upload a second <strong>.parquet</strong> log for A/B comparison</p>
-                        <button class="browse-btn" id="browse-btn-b">Browse Baseline</button>
+                        <h3 class="drop-title">Camera 2 Feed</h3>
+                        <p class="drop-desc">Upload a <strong>.mp4</strong> video from the secondary camera</p>
+                        <button class="browse-btn" id="browse-btn-right">Browse Camera 2</button>
                     </div>
-                    <div class="drop-content hidden" id="drop-content-success-b">
+                    <div class="drop-content hidden" id="drop-content-success-right">
                         <svg class="upload-icon" style="color: var(--secondary);" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
                             <path d="M22 11.08V12a10 10 0 1 1-5.93-9.14"></path>
                             <polyline points="22 4 12 14.01 9 11.01"></polyline>
                         </svg>
-                        <h3 class="drop-title" id="uploaded-filename-b" style="max-width: 100%; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; padding: 0 10px;">filename.parquet</h3>
-                        <button class="browse-btn" id="change-file-btn-b" style="margin-top: 1rem;">Change Baseline File</button>
+                        <h3 class="drop-title" id="uploaded-filename-right" style="max-width: 100%; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; padding: 0 10px;">filename.mp4</h3>
+                        <button class="browse-btn" id="change-file-btn-right" style="margin-top: 1rem;">Change Camera 2 File</button>
                     </div>
                 </div>
             </div>
             
             <div style="display: flex; justify-content: center; margin-top: 2rem;">
-                <button id="run-analysis-btn" class="browse-btn" style="padding: 1rem 3rem; font-size: 1.1rem; background-color: var(--primary); color: white; display: none;">Run Analysis</button>
+                <button id="run-analysis-btn" class="browse-btn" style="padding: 1rem 3rem; font-size: 1.1rem; background-color: var(--primary); color: white; display: none;">Run AV Analysis</button>
             </div>
             <div id="loading-overlay" class="loading-overlay hidden">
                 <div class="spinner"></div>
-                <p>Analyzing Telemetry...</p>
+                <p>Processing Video Streams (This may take a while)...</p>
             </div>
         </section>
 
+        <!-- Results Dashboard Section -->
         <section id="results-section" class="results-section hidden">
-            <div style="display: flex; justify-content: flex-end; margin-bottom: 1rem; gap: 1rem;">
-                <button id="export-csv-btn" class="browse-btn" style="padding: 0.5rem 1.5rem; font-size: 0.9rem; margin: 0;">Export CSV</button>
-                <button id="export-pdf-btn" class="browse-btn" style="padding: 0.5rem 1.5rem; font-size: 0.9rem; margin: 0;">Export PDF</button>
+            <!-- 3D Visualization -->
+            <div class="glass-card full-span" style="display: flex; flex-direction: column; height: 500px;">
+                <h3 class="card-title">3D Skeletal Reconstruction</h3>
+                <div id="viewer-container" style="flex: 1; border-radius: 8px; overflow: hidden; margin-top: 1rem; position: relative; background: #000;">
+                    <!-- Three.js Canvas injected here -->
+                </div>
+                <!-- Playback Controls -->
+                <div class="playback-controls" style="display: flex; align-items: center; gap: 1rem; margin-top: 1rem;">
+                    <button id="play-btn" class="icon-btn">▶</button>
+                    <button id="pause-btn" class="icon-btn">⏸</button>
+                    <input type="range" id="timeline" min="0" max="100" value="0" style="flex: 1; cursor: pointer;">
+                </div>
             </div>
-            <div class="results-grid">
-                <!-- Classification Card -->
-                <div class="glass-card classification-card">
-                    <h3 class="card-title">
-                        Policy Classification
-                        <div class="info-icon-container" style="margin-left: auto;">
-                            <svg class="info-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"></circle><line x1="12" y1="16" x2="12" y2="12"></line><line x1="12" y1="8" x2="12.01" y2="8"></line></svg>
-                            <div class="tooltip-text">Calculated using a weighted sum of the biomechanical metrics below, dynamically adjusted based on the selected Evaluation Task.</div>
-                        </div>
-                    </h3>
-                    <div class="classification-content">
-                        <div class="score-ring">
-                            <span id="classification-score" class="score-value">--</span>
-                        </div>
-                        <div class="tier-info">
-                            <span class="tier-label">Tier</span>
-                            <h2 id="policy-tier" class="tier-value">--</h2>
-                        </div>
-                    </div>
-                </div>
 
-                <!-- Metrics Card -->
-                <div class="glass-card metrics-card">
-                    <h3 class="card-title">
-                        Key Metrics
-                        <span id="evaluated-task-label" class="task-badge hidden" style="margin-left: auto;"></span>
-                    </h3>
-                    <div class="metrics-grid">
-                        <div class="metric-item" id="card-ldlj">
-                            <div class="metric-header">
-                                <span class="metric-label">Smoothness (LDLJ)</span>
-                                <div class="info-icon-container">
-                                    <svg class="info-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"></circle><line x1="12" y1="16" x2="12" y2="12"></line><line x1="12" y1="8" x2="12.01" y2="8"></line></svg>
-                                    <div class="tooltip-text">Log Dimensionless Jerk. Measures movement fluidity by integrating squared jerk over the trajectory. Higher (closer to 0) indicates smoother movement.</div>
-                                </div>
-                            </div>
-                            <span id="metric-ldlj" class="metric-value">--</span>
-                        </div>
-                        <div class="metric-item" id="card-sparc">
-                            <div class="metric-header">
-                                <span class="metric-label">Smoothness (SPARC)</span>
-                                <div class="info-icon-container">
-                                    <svg class="info-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"></circle><line x1="12" y1="16" x2="12" y2="12"></line><line x1="12" y1="8" x2="12.01" y2="8"></line></svg>
-                                    <div class="tooltip-text">Spectral Arc Length. Measures smoothness in the frequency domain. Less sensitive to noise than LDLJ. Higher values indicate smoother movement.</div>
-                                </div>
-                            </div>
-                            <span id="metric-sparc" class="metric-value">--</span>
-                        </div>
-                        <div class="metric-item" id="card-symmetry">
-                            <div class="metric-header">
-                                <span class="metric-label">Symmetry Index</span>
-                                <div class="info-icon-container">
-                                    <svg class="info-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"></circle><line x1="12" y1="16" x2="12" y2="12"></line><line x1="12" y1="8" x2="12.01" y2="8"></line></svg>
-                                    <div class="tooltip-text">Measures left-right joint symmetry by comparing movement variance between opposing sides. 0% means perfectly symmetrical, higher values indicate asymmetry (up to 200%).</div>
-                                </div>
-                            </div>
-                            <span id="metric-symmetry" class="metric-value">-- <small>%</small></span>
-                        </div>
-                        <div class="metric-item" id="card-periodicity">
-                            <div class="metric-header">
-                                <span class="metric-label">Periodicity Score</span>
-                                <div class="info-icon-container">
-                                    <svg class="info-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"></circle><line x1="12" y1="16" x2="12" y2="12"></line><line x1="12" y1="8" x2="12.01" y2="8"></line></svg>
-                                    <div class="tooltip-text">Measures gait regularity using autocorrelation. A score of 1.0 indicates perfect repetition of the movement cycle.</div>
-                                </div>
-                            </div>
-                            <span id="metric-periodicity" class="metric-value">--</span>
-                        </div>
-                        <div class="metric-item full-width" id="card-rom">
-                            <div class="metric-header">
-                                <span class="metric-label">ROM Utilisation</span>
-                                <div class="info-icon-container">
-                                    <svg class="info-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"></circle><line x1="12" y1="16" x2="12" y2="12"></line><line x1="12" y1="8" x2="12.01" y2="8"></line></svg>
-                                    <div class="tooltip-text">Range of Motion Utilisation. The mean angular displacement across all active joints. Indicates how dynamically the robot's capabilities are being used.</div>
-                                </div>
-                            </div>
-                            <span id="metric-rom" class="metric-value">-- <small>rad</small></span>
-                        </div>
-                        <!-- New Metrics for Jumping -->
-                        <div class="metric-item" id="card-flight-time" style="display: none;">
-                            <div class="metric-header">
-                                <span class="metric-label">Flight Time</span>
-                                <div class="info-icon-container">
-                                    <svg class="info-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"></circle><line x1="12" y1="16" x2="12" y2="12"></line><line x1="12" y1="8" x2="12.01" y2="8"></line></svg>
-                                    <div class="tooltip-text">Duration in the air during a jump. Measured from push-off peak acceleration to landing impact.</div>
-                                </div>
-                            </div>
-                            <span id="metric-flight-time" class="metric-value">-- <small>s</small></span>
-                        </div>
-                        <div class="metric-item" id="card-peak-z-accel" style="display: none;">
-                            <div class="metric-header">
-                                <span class="metric-label">Peak Z-Accel</span>
-                                <div class="info-icon-container">
-                                    <svg class="info-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"></circle><line x1="12" y1="16" x2="12" y2="12"></line><line x1="12" y1="8" x2="12.01" y2="8"></line></svg>
-                                    <div class="tooltip-text">Maximum vertical acceleration. Represents the explosive power of the push-off.</div>
-                                </div>
-                            </div>
-                            <span id="metric-peak-z-accel" class="metric-value">-- <small>rad/s²</small></span>
-                        </div>
-                        <div class="metric-item" id="card-landing-jerk" style="display: none;">
-                            <div class="metric-header">
-                                <span class="metric-label">Landing Jerk</span>
-                                <div class="info-icon-container">
-                                    <svg class="info-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"></circle><line x1="12" y1="16" x2="12" y2="12"></line><line x1="12" y1="8" x2="12.01" y2="8"></line></svg>
-                                    <div class="tooltip-text">Sharpness of deceleration on landing. Lower values mean better shock absorption.</div>
-                                </div>
-                            </div>
-                            <span id="metric-landing-jerk" class="metric-value">-- <small>rad/s³</small></span>
-                        </div>
-                        <!-- New Metrics for Transitions -->
-                        <div class="metric-item" id="card-com-oscillation" style="display: none;">
-                            <div class="metric-header">
-                                <span class="metric-label">CoM Oscillation</span>
-                                <div class="info-icon-container">
-                                    <svg class="info-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"></circle><line x1="12" y1="16" x2="12" y2="12"></line><line x1="12" y1="8" x2="12.01" y2="8"></line></svg>
-                                    <div class="tooltip-text">Center of Mass wobble during the transition. Lower variance is more stable.</div>
-                                </div>
-                            </div>
-                            <span id="metric-com-oscillation" class="metric-value">--</span>
-                        </div>
-                        <div class="metric-item" id="card-transition-time" style="display: none;">
-                            <div class="metric-header">
-                                <span class="metric-label">Transition Time</span>
-                                <div class="info-icon-container">
-                                    <svg class="info-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"></circle><line x1="12" y1="16" x2="12" y2="12"></line><line x1="12" y1="8" x2="12.01" y2="8"></line></svg>
-                                    <div class="tooltip-text">Total duration to complete the pose transition.</div>
-                                </div>
-                            </div>
-                            <span id="metric-transition-time" class="metric-value">-- <small>s</small></span>
-                        </div>
-                    </div>
+            <!-- Classification Badge -->
+            <div class="glass-card classification-card">
+                <h3 class="card-title">Classification Tier</h3>
+                <div class="classification-content" style="display: flex; flex-direction: column; align-items: center; justify-content: center; height: 100%; text-align: center;">
+                    <div id="tier-badge" class="tier-badge" style="font-size: 2rem; font-weight: 700; margin-bottom: 0.5rem; background: linear-gradient(135deg, #3b82f6, #8b5cf6); -webkit-background-clip: text; -webkit-text-fill-color: transparent;">--</div>
+                    <div style="font-size: 1.2rem; color: var(--text-secondary);">Score: <span id="final-score" style="color: var(--text); font-weight: 600;">--</span> / 1.0</div>
                 </div>
-                
-                <!-- 3D Viewer Card -->
-                <div class="glass-card viewer-card full-width" style="grid-column: 1 / -1; margin-top: 1.5rem;">
-                    <h3 class="card-title">3D Playback</h3>
-                    <div id="viewer-container" class="viewer-container">
-                        <!-- WebGL Canvas will be injected here -->
-                    </div>
-                    <div class="playback-controls">
-                        <button id="play-btn" class="control-btn">Play</button>
-                        <button id="pause-btn" class="control-btn">Pause</button>
-                        <div id="timeline-container" style="position: relative; width: 100%; display: flex; align-items: center;">
-                            <input type="range" id="timeline" min="0" max="100" value="0" class="timeline" style="width: 100%; z-index: 2;">
-                            <div id="anomaly-markers" style="position: absolute; top: 0; left: 0; right: 0; bottom: 0; pointer-events: none; z-index: 3;"></div>
-                        </div>
-                    </div>
-                </div>
-                
-                <!-- Telemetry Analysis Card -->
-                <div class="glass-card full-width" style="grid-column: 1 / -1; margin-top: 1.5rem;">
-                    <h3 class="card-title">Telemetry Analysis</h3>
+            </div>
+
+            <!-- Biomechanics Metrics Grid -->
+            <div class="glass-card metrics-card" style="grid-column: span 2;">
+                <h3 class="card-title">Biomechanical Analysis</h3>
+                <div class="metrics-grid" style="display: grid; grid-template-columns: repeat(auto-fit, minmax(180px, 1fr)); gap: 1.5rem; margin-top: 1.5rem;">
                     
-                    <div class="chart-controls" style="margin-bottom: 1rem; display: flex; gap: 1rem; flex-wrap: wrap;">
-                        <label style="color: var(--text-secondary); display: flex; align-items: center; gap: 0.5rem;">
-                            <input type="checkbox" id="toggle-velocity" checked> Global Velocity
-                        </label>
-                        <label style="color: var(--text-secondary); display: flex; align-items: center; gap: 0.5rem;">
-                            <input type="checkbox" id="toggle-acceleration" checked> Global Acceleration
-                        </label>
-                        <label style="color: var(--text-secondary); display: flex; align-items: center; gap: 0.5rem;">
-                            <input type="checkbox" id="toggle-jerk" checked> Global Jerk
-                        </label>
-                        <label style="color: var(--text-secondary); display: flex; align-items: center; gap: 0.5rem;">
-                            <input type="checkbox" id="toggle-com" checked> CoM Oscillation
-                        </label>
+                    <div class="metric-item">
+                        <span class="metric-label">Smoothness (LDLJ)</span>
+                        <div id="metric-ldlj" class="metric-value">--</div>
+                    </div>
+                    <div class="metric-item">
+                        <span class="metric-label">Smoothness (SPARC)</span>
+                        <div id="metric-sparc" class="metric-value">--</div>
+                    </div>
+                    <div class="metric-item">
+                        <span class="metric-label">Symmetry Index</span>
+                        <div id="metric-symmetry" class="metric-value">--</div>
+                    </div>
+                    <div class="metric-item">
+                        <span class="metric-label">Periodicity</span>
+                        <div id="metric-periodicity" class="metric-value">--</div>
+                    </div>
+                    <div class="metric-item">
+                        <span class="metric-label">ROM Utilisation</span>
+                        <div id="metric-rom" class="metric-value">--</div>
+                    </div>
+                    <div class="metric-item">
+                        <span class="metric-label">Flight Time (s)</span>
+                        <div id="metric-flight" class="metric-value">--</div>
+                    </div>
+                    <div class="metric-item">
+                        <span class="metric-label">Peak Z Accel</span>
+                        <div id="metric-accel" class="metric-value">--</div>
+                    </div>
+                    <div class="metric-item">
+                        <span class="metric-label">Landing Jerk</span>
+                        <div id="metric-jerk" class="metric-value">--</div>
+                    </div>
+                    <div class="metric-item">
+                        <span class="metric-label">CoM Oscillation</span>
+                        <div id="metric-com" class="metric-value">--</div>
+                    </div>
+                    <div class="metric-item">
+                        <span class="metric-label">Transition Time (s)</span>
+                        <div id="metric-transition" class="metric-value">--</div>
                     </div>
 
-                    <div id="charts-container" style="display: flex; flex-direction: column; gap: 1rem;">
-                        <div class="chart-wrapper" id="wrapper-velocity" style="position: relative; height: 150px; width: 100%;">
-                            <canvas id="chart-velocity"></canvas>
-                        </div>
-                        <div class="chart-wrapper" id="wrapper-acceleration" style="position: relative; height: 150px; width: 100%;">
-                            <canvas id="chart-acceleration"></canvas>
-                        </div>
-                        <div class="chart-wrapper" id="wrapper-jerk" style="position: relative; height: 150px; width: 100%;">
-                            <canvas id="chart-jerk"></canvas>
-                        </div>
-                        <div class="chart-wrapper" id="wrapper-com" style="position: relative; height: 150px; width: 100%;">
-                            <canvas id="chart-com"></canvas>
-                        </div>
-                    </div>
                 </div>
             </div>
         </section>
     </main>
 
-    <!-- Log Library Modal -->
-    <div id="log-library-modal" class="modal hidden">
-        <div class="modal-content glass-card">
-            <div class="modal-header">
-                <div style="display: flex; align-items: center; gap: 1rem;">
-                    <h2>Log Library</h2>
-                    <input type="file" id="library-upload-input" class="file-input" accept=".parquet" multiple hidden>
-                    <button id="library-upload-btn" class="browse-btn" style="margin: 0; padding: 0.5rem 1rem; font-size: 0.9rem;">
-                        Upload Logs
-                    </button>
-                </div>
-                <button id="close-modal-btn" class="close-btn">&times;</button>
-            </div>
-            <div class="modal-body">
-                <p style="color: var(--text-secondary); margin-bottom: 1rem;">Select logs to rank by classification score.</p>
-                <div id="log-list" class="log-list">
-                    <p style="color: var(--text-secondary); text-align: center; margin-top: 2rem;">No logs uploaded yet.</p>
-                </div>
-                <button id="rank-logs-btn" class="browse-btn" style="width: 100%; margin-top: 1.5rem;" disabled>Rank Selected</button>
-            </div>
-        </div>
-    </div>
-
-    <!-- Leaderboard Modal -->
-    <div id="leaderboard-modal" class="modal hidden">
-        <div class="modal-content glass-card" style="max-width: 600px;">
-            <div class="modal-header">
-                <div style="display: flex; align-items: center; gap: 1rem;">
-                    <h2>Ranked Leaderboard</h2>
-                    <select id="leaderboard-task-select" class="task-select" style="padding: 0.25rem 0.5rem; font-size: 0.9rem;">
-                        <option value="walking">Walking</option>
-                        <option value="reaching">Reaching</option>
-                        <option value="manipulation">Manipulation</option>
-                        <option value="jumping">Jumping</option>
-                        <option value="transitions">Transitions</option>
-                        <option value="testing">Testing Only</option>
-                    </select>
-                </div>
-                <button id="close-leaderboard-btn" class="close-btn">&times;</button>
-            </div>
-            <div class="modal-body">
-                <div id="leaderboard-list" class="leaderboard-list">
-                    <!-- Ranked logs populated here -->
-                </div>
-            </div>
-        </div>
-    </div>
-
-    <script src="script.js"></script>
     <script src="viewer.js"></script>
+    <script src="script.js"></script>
 </body>
 </html>

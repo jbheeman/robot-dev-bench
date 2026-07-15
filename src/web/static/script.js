@@ -7,6 +7,40 @@ document.addEventListener('DOMContentLoaded', () => {
 
     let fileLeft = null;
     let fileRight = null;
+    let cameraMode = 'stereo'; // 'stereo' | 'mono'
+
+    const modeBtnStereo = document.getElementById('mode-btn-stereo');
+    const modeBtnMono = document.getElementById('mode-btn-mono');
+    const dropZoneRightContainer = document.getElementById('drop-zone-right-container');
+    const monoHint = document.getElementById('mono-hint');
+
+    function updateRunButtonVisibility() {
+        const ready = cameraMode === 'stereo' ? (fileLeft && fileRight) : !!fileLeft;
+        runAnalysisBtn.style.display = ready ? 'block' : 'none';
+    }
+
+    function setCameraMode(newMode) {
+        cameraMode = newMode;
+        const isStereo = cameraMode === 'stereo';
+
+        modeBtnStereo.classList.toggle('active-mode', isStereo);
+        modeBtnMono.classList.toggle('active-mode', !isStereo);
+        dropZoneRightContainer.classList.toggle('hidden', !isStereo);
+        monoHint.classList.toggle('hidden', isStereo);
+
+        if (isStereo) {
+            runAnalysisBtn.textContent = 'Run AV Analysis';
+        } else {
+            runAnalysisBtn.textContent = 'Run Single-Camera Analysis';
+            fileRight = null;
+        }
+        updateRunButtonVisibility();
+    }
+
+    if (modeBtnStereo && modeBtnMono) {
+        modeBtnStereo.addEventListener('click', () => setCameraMode('stereo'));
+        modeBtnMono.addEventListener('click', () => setCameraMode('mono'));
+    }
 
     function preventDefaults(e) {
         e.preventDefault();
@@ -50,8 +84,9 @@ document.addEventListener('DOMContentLoaded', () => {
 
 
     function handleFileSelection(file, isRight, successId, defaultId, filenameId, zoneId) {
-        if (!file.name.endsWith('.mp4')) {
-            alert("Only .mp4 files are supported.");
+        const lowerName = file.name.toLowerCase();
+        if (!lowerName.endsWith('.mp4') && !lowerName.endsWith('.mov')) {
+            alert("Only .mp4 and .mov files are supported.");
             return;
         }
 
@@ -65,30 +100,39 @@ document.addEventListener('DOMContentLoaded', () => {
         document.getElementById(defaultId).classList.add('hidden');
         document.getElementById(successId).classList.remove('hidden');
         document.getElementById(filenameId).textContent = file.name;
-        
-        if (fileLeft && fileRight) {
-            runAnalysisBtn.style.display = 'block';
-        }
+
+        updateRunButtonVisibility();
     }
 
     runAnalysisBtn.addEventListener('click', async () => {
-        if (!fileLeft || !fileRight) {
+        if (cameraMode === 'stereo' && (!fileLeft || !fileRight)) {
             alert("Please upload both Camera 1 and Camera 2 feeds.");
             return;
         }
-        
+        if (cameraMode === 'mono' && !fileLeft) {
+            alert("Please upload a camera feed.");
+            return;
+        }
+
         resultsSection.classList.add('hidden');
         loadingOverlay.classList.remove('hidden');
-        
+
         try {
             const formData = new FormData();
-            formData.append('left_camera', fileLeft);
-            formData.append('right_camera', fileRight);
+            let endpoint;
+            if (cameraMode === 'stereo') {
+                formData.append('left_camera', fileLeft);
+                formData.append('right_camera', fileRight);
+                endpoint = '/api/upload_av';
+            } else {
+                formData.append('camera', fileLeft);
+                endpoint = '/api/upload_mono';
+            }
             if (taskSelect) {
                 formData.append('task', taskSelect.value);
             }
 
-            const response = await fetch('/api/upload_av', {
+            const response = await fetch(endpoint, {
                 method: 'POST',
                 body: formData
             });

@@ -46,11 +46,22 @@
                     <option value="transitions">Transitions</option>
                 </select>
             </div>
-            
+
+            <div class="task-selector-container">
+                <label class="task-label">Camera Mode:</label>
+                <div style="display: flex; gap: 0.5rem;">
+                    <button type="button" id="mode-btn-stereo" class="browse-btn mode-btn active-mode">Two Cameras (Stereo)</button>
+                    <button type="button" id="mode-btn-mono" class="browse-btn mode-btn">Single Camera</button>
+                </div>
+            </div>
+            <p id="mono-hint" class="drop-desc hidden" style="margin: -0.5rem 0 1rem;">
+                Depth is inferred from known G1 bone lengths instead of triangulation &mdash; less accurate than stereo, especially further from the hips.
+            </p>
+
             <div style="display: flex; gap: 2rem; width: 100%;">
                 <!-- Left Camera Drop Zone -->
                 <div id="drop-zone-left" class="drop-zone" style="flex: 1;">
-                    <input type="file" id="file-input-left" class="file-input" accept=".mp4" hidden>
+                    <input type="file" id="file-input-left" class="file-input" accept=".mp4,.mov" hidden>
                     <div class="drop-content" id="drop-content-default-left">
                         <svg class="upload-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
                             <rect x="2" y="2" width="20" height="20" rx="2.18" ry="2.18"></rect>
@@ -63,7 +74,7 @@
                             <line x1="17" y1="7" x2="22" y2="7"></line>
                         </svg>
                         <h3 class="drop-title">Camera 1 Feed</h3>
-                        <p class="drop-desc">Upload a <strong>.mp4</strong> video from the primary camera</p>
+                        <p class="drop-desc">Upload a <strong>.mp4</strong> or <strong>.mov</strong> video from the primary camera</p>
                         <button class="browse-btn" id="browse-btn-left">Browse Camera 1</button>
                     </div>
                     <div class="drop-content hidden" id="drop-content-success-left">
@@ -77,8 +88,9 @@
                 </div>
 
                 <!-- Right Camera Drop Zone -->
-                <div id="drop-zone-right" class="drop-zone" style="flex: 1;">
-                    <input type="file" id="file-input-right" class="file-input" accept=".mp4" hidden>
+                <div id="drop-zone-right-container" style="flex: 1;">
+                <div id="drop-zone-right" class="drop-zone">
+                    <input type="file" id="file-input-right" class="file-input" accept=".mp4,.mov" hidden>
                     <div class="drop-content" id="drop-content-default-right">
                         <svg class="upload-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
                             <rect x="2" y="2" width="20" height="20" rx="2.18" ry="2.18"></rect>
@@ -91,7 +103,7 @@
                             <line x1="17" y1="7" x2="22" y2="7"></line>
                         </svg>
                         <h3 class="drop-title">Camera 2 Feed</h3>
-                        <p class="drop-desc">Upload a <strong>.mp4</strong> video from the secondary camera</p>
+                        <p class="drop-desc">Upload a <strong>.mp4</strong> or <strong>.mov</strong> video from the secondary camera</p>
                         <button class="browse-btn" id="browse-btn-right">Browse Camera 2</button>
                     </div>
                     <div class="drop-content hidden" id="drop-content-success-right">
@@ -102,6 +114,7 @@
                         <h3 class="drop-title" id="uploaded-filename-right" style="max-width: 100%; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; padding: 0 10px;">filename.mp4</h3>
                         <button class="browse-btn" id="change-file-btn-right" style="margin-top: 1rem;">Change Camera 2 File</button>
                     </div>
+                </div>
                 </div>
             </div>
             

@@ -107,5 +107,5 @@ if __name__ == "__main__":
     os.makedirs(os.path.dirname(os.path.abspath(OUTPUT_PATH)), exist_ok=True)
     df = generate()
     df.to_parquet(OUTPUT_PATH, engine="pyarrow", index=False)
-    print(f"Generated {len(df)} rows → {os.path.abspath(OUTPUT_PATH)}")
+    print(f"Generated {len(df)} rows -> {os.path.abspath(OUTPUT_PATH)}")
     print(f"Columns: {list(df.columns)}")

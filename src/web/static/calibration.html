@@ -174,7 +174,7 @@
             <div style="display: flex; gap: 2rem; width: 100%;">
                 <!-- Left Calibration Video -->
                 <div id="drop-zone-cal-left" class="drop-zone" style="flex: 1;">
-                    <input type="file" id="cal-input-left" class="file-input" accept=".mp4" hidden>
+                    <input type="file" id="cal-input-left" class="file-input" accept=".mp4,.mov" hidden>
                     <div class="drop-content" id="cal-default-left">
                         <svg class="upload-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
                             <rect x="2" y="2" width="20" height="20" rx="2.18" ry="2.18"></rect>
@@ -194,7 +194,7 @@
                 </div>
                 <!-- Right Calibration Video -->
                 <div id="drop-zone-cal-right" class="drop-zone" style="flex: 1;">
-                    <input type="file" id="cal-input-right" class="file-input" accept=".mp4" hidden>
+                    <input type="file" id="cal-input-right" class="file-input" accept=".mp4,.mov" hidden>
                     <div class="drop-content" id="cal-default-right">
                         <svg class="upload-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
                             <rect x="2" y="2" width="20" height="20" rx="2.18" ry="2.18"></rect>
@@ -328,7 +328,8 @@
         }
 
         function selectFile(file, isRight, successId, defaultId, filenameId, zoneId) {
-            if (!file.name.endsWith('.mp4')) { alert('Only .mp4 files supported.'); return; }
+            const lowerName = file.name.toLowerCase();
+            if (!lowerName.endsWith('.mp4') && !lowerName.endsWith('.mov')) { alert('Only .mp4 and .mov files supported.'); return; }
             if (isRight) { fileRight = file; } else { fileLeft = file; }
             document.getElementById(zoneId).classList.add(isRight ? 'has-file-b' : 'has-file');
             document.getElementById(defaultId).classList.add('hidden');

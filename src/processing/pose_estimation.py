@@ -1,9 +1,42 @@
 import sys
 import types
+import importlib.machinery
 if 'mmcv._ext' not in sys.modules:
-    sys.modules['mmcv._ext'] = types.ModuleType('mmcv._ext')
-    sys.modules['mmcv._ext'].active_rotated_filter_forward = lambda *args: None
-    sys.modules['mmcv._ext'].active_rotated_filter_backward = lambda *args: None
+    # mmdet/mmpose's import chain pulls in several compiled mmcv ops
+    # (active_rotated_filter, assign_score_withk, roi_align, ...) purely as a
+    # side effect of module-level imports in code paths we never call (e.g.
+    # DetInferencer's eval/metrics machinery) -- none of them are reachable
+    # by the actual RTMDet + ViTPose++ top-down inference this module runs,
+    # so a no-op is fine for those. `nms` is the one exception: RTMDet's
+    # detection head genuinely calls it for post-processing, so it needs a
+    # real implementation -- backed by torchvision's compiled NMS op rather
+    # than mmcv's, since we use mmcv-lite (no compiled C++/CUDA ops) to
+    # avoid needing a build toolchain.
+    def _stub_nms(bboxes, scores, iou_threshold, offset=0, **kwargs):
+        import torchvision
+        if offset:
+            bboxes = bboxes.clone()
+            bboxes[:, 2:] += offset
+        return torchvision.ops.nms(bboxes, scores, float(iou_threshold))
+
+    def _mmcv_ext_getattr(name):
+        # Let dunder lookups (__file__, __path__, __spec__, ...) raise
+        # normally -- returning a fake value for those confuses stdlib
+        # `inspect`/importlib introspection (e.g. mmengine's Registry
+        # scans sys.modules and calls inspect.getabsfile() on each one).
+        if name.startswith('__') and name.endswith('__'):
+            raise AttributeError(name)
+        if name == 'nms':
+            return _stub_nms
+        return lambda *args, **kwargs: None
+
+    _mmcv_ext_stub = types.ModuleType('mmcv._ext')
+    _mmcv_ext_stub.__getattr__ = _mmcv_ext_getattr
+    # importlib.util.find_spec raises ValueError for an already-imported
+    # module whose __spec__ is None (mmengine's mmcv_full_available() hits
+    # this via pkgutil.find_loader) -- give it a real, inert spec instead.
+    _mmcv_ext_stub.__spec__ = importlib.machinery.ModuleSpec('mmcv._ext', loader=None)
+    sys.modules['mmcv._ext'] = _mmcv_ext_stub
 """
 2D Pose Estimation Module
 

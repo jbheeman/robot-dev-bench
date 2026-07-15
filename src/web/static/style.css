@@ -233,6 +233,22 @@ body {
     box-shadow: 0 6px 20px var(--primary-glow);
 }
 
+.mode-btn {
+    margin-top: 0;
+    padding: 0.6rem 1.5rem;
+    font-size: 0.9rem;
+    background: rgba(255, 255, 255, 0.05);
+    color: var(--text-secondary);
+    box-shadow: none;
+    border: 1px solid rgba(255, 255, 255, 0.1);
+}
+
+.mode-btn.active-mode {
+    background: linear-gradient(135deg, var(--primary) 0%, var(--secondary) 100%);
+    color: white;
+    box-shadow: 0 4px 15px var(--primary-glow);
+}
+
 /* Loading Overlay */
 .loading-overlay {
     position: absolute;

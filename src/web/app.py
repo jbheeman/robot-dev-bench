@@ -1,6 +1,7 @@
 import os
 import tempfile
 import logging
+import math
 import numpy as np
 import pandas as pd
 from fastapi import FastAPI, UploadFile, File, Form, HTTPException
@@ -12,6 +13,7 @@ from src.ingestion.schema_mapper import SchemaMapper
 from src.processing.calibration import calibrate_stereo, CalibrationResult
 from src.processing.pose_estimation import estimate_stereo_poses
 from src.processing.triangulation import triangulate_pose_sequence
+from src.processing.monocular_depth import estimate_monocular_pose_and_depth
 from src.features.biomechanics import (
     compute_smoothness_3d,
     compute_sparc_3d,
@@ -47,6 +49,46 @@ CALIBRATION_FILE = os.path.join(CALIBRATION_DIR, "stereo_calibration.json")
 # In-memory cache of the active calibration
 _active_calibration: CalibrationResult | None = None
 
+# Rough intrinsic guess used for /api/upload_mono when no stereo calibration
+# has been run yet (monocular depth only needs one camera's K/dist, but the
+# app currently only ever calibrates a stereo pair).
+_DEFAULT_MONO_K = np.array([[1000.0, 0, 640.0], [0, 1000.0, 360.0], [0, 0, 1.0]])
+_DEFAULT_MONO_DIST = np.zeros(5)
+
+# Video containers accepted for camera/calibration uploads. cv2/moviepy read
+# these via ffmpeg, which sniffs the container from content rather than the
+# extension, but we still validate + preserve the extension on the temp file
+# so downstream tools that DO key off the suffix behave correctly.
+ALLOWED_VIDEO_EXTENSIONS = (".mp4", ".mov")
+
+
+def _video_suffix(filename: str) -> str:
+    """Validate a video filename's extension, returning it (lowercased) for
+    use as a temp file suffix."""
+    ext = os.path.splitext(filename)[1].lower()
+    if ext not in ALLOWED_VIDEO_EXTENSIONS:
+        raise HTTPException(
+            status_code=400,
+            detail=f"Only {'/'.join(ALLOWED_VIDEO_EXTENSIONS)} files are supported.",
+        )
+    return ext
+
+
+def _sanitize_floats(value):
+    """Replace NaN/Infinity with 0.0 so responses stay valid JSON.
+
+    Biomechanics metrics can come out NaN/Inf when a video has no valid
+    pose detections (e.g. no visible subject), which the standard JSON
+    encoder rejects outright.
+    """
+    if isinstance(value, dict):
+        return {k: _sanitize_floats(v) for k, v in value.items()}
+    if isinstance(value, (list, tuple)):
+        return [_sanitize_floats(v) for v in value]
+    if isinstance(value, float) and not math.isfinite(value):
+        return 0.0
+    return value
+
 
 def _load_cached_calibration() -> CalibrationResult | None:
     """Load calibration from disk if it exists."""
@@ -72,26 +114,26 @@ async def calibrate_cameras(
     marker_size: float = Form(0.015),
 ):
     """
-    Accepts two .mp4 calibration videos (checkerboard visible in both),
+    Accepts two calibration videos (.mp4/.mov, checkerboard visible in both),
     runs the full stereo calibration pipeline, persists the result,
     and returns the calibration parameters.
     """
     global _active_calibration
 
-    if not left_video.filename.endswith(".mp4") or not right_video.filename.endswith(".mp4"):
-        raise HTTPException(status_code=400, detail="Only .mp4 files are supported.")
+    left_suffix = _video_suffix(left_video.filename)
+    right_suffix = _video_suffix(right_video.filename)
 
     left_tmp_path = None
     right_tmp_path = None
 
     try:
         # Save uploads to temp files
-        left_tmp = tempfile.NamedTemporaryFile(suffix=".mp4", delete=False)
+        left_tmp = tempfile.NamedTemporaryFile(suffix=left_suffix, delete=False)
         left_tmp.write(await left_video.read())
         left_tmp.close()
         left_tmp_path = left_tmp.name
 
-        right_tmp = tempfile.NamedTemporaryFile(suffix=".mp4", delete=False)
+        right_tmp = tempfile.NamedTemporaryFile(suffix=right_suffix, delete=False)
         right_tmp.write(await right_video.read())
         right_tmp.close()
         right_tmp_path = right_tmp.name
@@ -147,24 +189,21 @@ async def upload_av_files(
     task: str = Form("general"),
 ):
     """
-    Accepts two .mp4 video files (left and right cameras),
+    Accepts two video files (.mp4/.mov, left and right cameras),
     validates them, and saves them to temporary storage for processing.
     """
-    if not left_camera.filename.endswith(".mp4") or not right_camera.filename.endswith(".mp4"):
-        raise HTTPException(
-            status_code=400,
-            detail="Only .mp4 files are supported for camera feeds.",
-        )
+    left_suffix = _video_suffix(left_camera.filename)
+    right_suffix = _video_suffix(right_camera.filename)
 
     try:
         # Save left camera
-        left_tmp = tempfile.NamedTemporaryFile(suffix=".mp4", delete=False)
+        left_tmp = tempfile.NamedTemporaryFile(suffix=left_suffix, delete=False)
         left_contents = await left_camera.read()
         left_tmp.write(left_contents)
         left_tmp.close()
 
         # Save right camera
-        right_tmp = tempfile.NamedTemporaryFile(suffix=".mp4", delete=False)
+        right_tmp = tempfile.NamedTemporaryFile(suffix=right_suffix, delete=False)
         right_contents = await right_camera.read()
         right_tmp.write(right_contents)
         right_tmp.close()
@@ -217,10 +256,12 @@ async def upload_av_files(
             "com_oscillation": transition.get("com_oscillation", 0.0),
             "transition_time": transition.get("transition_time", 0.0),
         }
+        metrics = _sanitize_floats(metrics)
 
         # Step 4: Rule-based classification
         classifier = RuleBasedClassifier()
         score, tier = classifier.classify(metrics, task)
+        score = _sanitize_floats(score)
 
         poses_3d_clean = np.where(np.isnan(poses_3d), None, poses_3d).tolist()
         valid_mask_clean = valid_mask.tolist()
@@ -249,6 +290,96 @@ async def upload_av_files(
             os.remove(left_tmp.name)
         if "right_tmp" in locals() and os.path.exists(right_tmp.name):
             os.remove(right_tmp.name)
+
+
+@app.post("/api/upload_mono")
+async def upload_mono_file(
+    camera: UploadFile = File(...),
+    task: str = Form("general"),
+):
+    """
+    Accepts a single video file (.mp4/.mov) and estimates a 3D pose sequence
+    using known G1 bone-length constraints in place of stereo triangulation
+    (see src.processing.monocular_depth). Less accurate than the two-camera
+    pipeline -- error grows outward from the hip along the kinematic chain --
+    but only needs one camera.
+    """
+    suffix = _video_suffix(camera.filename)
+
+    try:
+        tmp = tempfile.NamedTemporaryFile(suffix=suffix, delete=False)
+        tmp.write(await camera.read())
+        tmp.close()
+
+        logger.info(f"Received mono AV payload. Camera: {camera.filename}")
+
+        # Reuse an existing stereo calibration's left-camera intrinsics if
+        # available (more accurate); otherwise fall back to a rough guess.
+        cal = _load_cached_calibration()
+        if cal is not None:
+            K, dist = cal.K_left, cal.dist_left
+        else:
+            logger.warning("No calibration found; using default intrinsics for monocular depth.")
+            K, dist = _DEFAULT_MONO_K, _DEFAULT_MONO_DIST
+
+        logger.info("Running 2D pose estimation + monocular depth lifting …")
+        pose_result, poses_3d, valid_mask = estimate_monocular_pose_and_depth(
+            tmp.name, K, dist, device="cpu",
+        )
+
+        # Biomechanics features
+        fps = pose_result.fps or 30.0
+        smoothness = compute_smoothness_3d(poses_3d, fps)
+        sparc = compute_sparc_3d(poses_3d, fps)
+        symmetry = compute_symmetry_3d(poses_3d)
+        periodicity = compute_periodicity_3d(poses_3d, fps)
+        rom = compute_rom_3d(poses_3d)
+        jumping = compute_jumping_metrics_3d(poses_3d, fps)
+        transition = compute_transition_metrics_3d(poses_3d, fps)
+
+        metrics = {
+            "smoothness_ldlj": smoothness.get("mean_ldlj", 0.0),
+            "smoothness_sparc": sparc.get("mean_sparc", 0.0),
+            "symmetry": symmetry.get("mean_symmetry_index", 0.0),
+            "periodicity": periodicity.get("regularity_score", 0.0),
+            "rom_utilisation": rom.get("mean_rom", 0.0),
+            "flight_time": jumping.get("flight_time", 0.0),
+            "peak_z_accel": jumping.get("peak_z_accel", 0.0),
+            "landing_jerk": jumping.get("landing_jerk", 0.0),
+            "com_oscillation": transition.get("com_oscillation", 0.0),
+            "transition_time": transition.get("transition_time", 0.0),
+        }
+        metrics = _sanitize_floats(metrics)
+
+        classifier = RuleBasedClassifier()
+        score, tier = classifier.classify(metrics, task)
+        score = _sanitize_floats(score)
+
+        poses_3d_clean = np.where(np.isnan(poses_3d), None, poses_3d).tolist()
+        valid_mask_clean = valid_mask.tolist()
+
+        return JSONResponse(content={
+            "task": task,
+            "status": "success",
+            "message": "Analysis complete (monocular depth estimate).",
+            "metrics": metrics,
+            "poses_3d": poses_3d_clean,
+            "valid_mask": valid_mask_clean,
+            "classification": {
+                "score": score,
+                "tier": tier,
+            }
+        })
+
+    except Exception as e:
+        logger.error(f"Error processing mono upload: {e}", exc_info=True)
+        return JSONResponse(
+            status_code=500,
+            content={"status": "error", "message": str(e)},
+        )
+    finally:
+        if "tmp" in locals() and os.path.exists(tmp.name):
+            os.remove(tmp.name)
 
 
 def extract_metrics_from_dataframe(df: pd.DataFrame) -> dict:
@@ -423,12 +554,16 @@ async def upload_log_file(file: UploadFile = File(...), task: str = Form("genera
             classifier = RuleBasedClassifier()
             score, tier = classifier.classify(metrics, task=task)
 
+        metrics = _sanitize_floats(metrics)
+        score = _sanitize_floats(round(score, 3))
+        playback_data = _sanitize_floats(playback_data)
+
         return JSONResponse(content={
             "filename": file.filename,
             "task": task,
             "metrics": metrics,
             "classification": {
-                "score": round(score, 3),
+                "score": score,
                 "tier": tier,
             },
             "playback": playback_data,

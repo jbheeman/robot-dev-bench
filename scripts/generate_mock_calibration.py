@@ -267,9 +267,9 @@ def generate(
     with open(gt_path, "w") as f:
         json.dump(gt_serialisable, f, indent=2)
 
-    print(f"✓ Left  video: {left_path} ({valid_frames} frames)")
-    print(f"✓ Right video: {right_path} ({valid_frames} frames)")
-    print(f"✓ Ground truth: {gt_path}")
+    print(f"[OK] Left  video: {left_path} ({valid_frames} frames)")
+    print(f"[OK] Right video: {right_path} ({valid_frames} frames)")
+    print(f"[OK] Ground truth: {gt_path}")
 
     return gt_serialisable
 

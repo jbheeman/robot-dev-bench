@@ -16,6 +16,10 @@ import numpy as np
 from typing import Dict, Any
 from scipy.signal import correlate, find_peaks
 
+# np.trapezoid was added in NumPy 2.0 as the replacement for the deprecated
+# np.trapz; support both so this module works on either NumPy major version.
+_trapezoid = getattr(np, 'trapezoid', None) or np.trapz
+
 
 def compute_smoothness_3d(
     poses_3d: np.ndarray,
@@ -59,7 +63,7 @@ def compute_smoothness_3d(
 
         duration = T * dt
         jerk_sq = np.sum(jerk ** 2, axis=1)  # scalar jerk magnitude squared
-        jerk_integral = np.trapezoid(jerk_sq, dx=dt)
+        jerk_integral = _trapezoid(jerk_sq, dx=dt)
 
         term = (duration ** 3 / v_peak ** 2) * jerk_integral
         ldlj = -np.log(max(term, 1e-12))
@@ -366,7 +370,7 @@ def compute_smoothness(df: pd.DataFrame) -> Dict[str, Any]:
             ldlj_per_joint.append(0.0)
             continue
             
-        jerk_sq_integral = np.trapezoid(j[:, col]**2, t_sec)
+        jerk_sq_integral = _trapezoid(j[:, col]**2, t_sec)
         
         # LDLJ formula: -ln( (D^3 / v_peak^2) * integral(j^2 dt) )
         term = (duration**3 / (v_peak**2)) * jerk_sq_integral

@@ -27,11 +27,14 @@
                     <h1 class="gradient-text">Unitree G1-Edu Benchmarks</h1>
                     <p class="subtitle">External AV Black-Box Evaluation System</p>
                 </div>
-                <a href="/calibration.html" style="color: var(--primary); text-decoration: none; font-size: 0.95rem; transition: opacity 0.2s;">⚙ Calibrate Cameras</a>
+                <div style="display: flex; align-items: center; gap: 1rem;">
+                    <span id="calibration-status-badge" style="font-size: 0.85rem; padding: 0.2rem 0.6rem; border-radius: 4px; background: rgba(255,255,255,0.1); color: var(--text-secondary);">Checking Calibration...</span>
+                    <a href="/calibration.html" style="color: var(--primary); text-decoration: none; font-size: 0.95rem; transition: opacity 0.2s;">⚙ Calibrate Cameras</a>
+                </div>
             </div>
             <div style="display: flex; gap: 1rem; margin-top: 1rem;">
                 <a href="/" style="padding: 0.5rem 1rem; background: var(--primary); color: white; border-radius: 8px; text-decoration: none; font-weight: 500;">Video Pipeline</a>
-                <a href="/legacy.html" style="padding: 0.5rem 1rem; background: rgba(255,255,255,0.05); color: var(--text-secondary); border-radius: 8px; text-decoration: none; font-weight: 500; border: 1px solid rgba(255,255,255,0.1);">Legacy Log Pipeline</a>
+                <a href="/legacy.html" style="padding: 0.5rem 1rem; background: rgba(255,255,255,0.05); color: var(--text-secondary); border-radius: 8px; text-decoration: none; font-weight: 500; border: 1px solid rgba(255,255,255,0.1);">Log Pipeline</a>
             </div>
         </header>
 
@@ -50,7 +53,7 @@
             <div style="display: flex; gap: 2rem; width: 100%;">
                 <!-- Left Camera Drop Zone -->
                 <div id="drop-zone-left" class="drop-zone" style="flex: 1;">
-                    <input type="file" id="file-input-left" class="file-input" accept=".mp4" hidden>
+                    <input type="file" id="file-input-left" class="file-input" accept=".mp4,.mov" hidden>
                     <div class="drop-content" id="drop-content-default-left">
                         <svg class="upload-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
                             <rect x="2" y="2" width="20" height="20" rx="2.18" ry="2.18"></rect>
@@ -63,7 +66,7 @@
                             <line x1="17" y1="7" x2="22" y2="7"></line>
                         </svg>
                         <h3 class="drop-title">Camera 1 Feed</h3>
-                        <p class="drop-desc">Upload a <strong>.mp4</strong> video from the primary camera</p>
+                        <p class="drop-desc">Upload a <strong>.mp4</strong> or <strong>.mov</strong> video from the primary camera</p>
                         <button class="browse-btn" id="browse-btn-left">Browse Camera 1</button>
                     </div>
                     <div class="drop-content hidden" id="drop-content-success-left">
@@ -78,7 +81,7 @@
 
                 <!-- Right Camera Drop Zone -->
                 <div id="drop-zone-right" class="drop-zone" style="flex: 1;">
-                    <input type="file" id="file-input-right" class="file-input" accept=".mp4" hidden>
+                    <input type="file" id="file-input-right" class="file-input" accept=".mp4,.mov" hidden>
                     <div class="drop-content" id="drop-content-default-right">
                         <svg class="upload-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
                             <rect x="2" y="2" width="20" height="20" rx="2.18" ry="2.18"></rect>
@@ -91,7 +94,7 @@
                             <line x1="17" y1="7" x2="22" y2="7"></line>
                         </svg>
                         <h3 class="drop-title">Camera 2 Feed</h3>
-                        <p class="drop-desc">Upload a <strong>.mp4</strong> video from the secondary camera</p>
+                        <p class="drop-desc">Upload a <strong>.mp4</strong> or <strong>.mov</strong> video from the secondary camera</p>
                         <button class="browse-btn" id="browse-btn-right">Browse Camera 2</button>
                     </div>
                     <div class="drop-content hidden" id="drop-content-success-right">
@@ -110,7 +113,10 @@
             </div>
             <div id="loading-overlay" class="loading-overlay hidden">
                 <div class="spinner"></div>
-                <p>Processing Video Streams (This may take a while)...</p>
+                <p id="loading-text">Processing Video Streams (This may take a while)...</p>
+                <div class="progress-bar-container" style="width: 80%; max-width: 400px; height: 10px; background: rgba(255,255,255,0.1); border-radius: 5px; margin-top: 15px; overflow: hidden;">
+                    <div id="loading-progress" style="width: 0%; height: 100%; background: var(--primary); transition: width 0.3s ease;"></div>
+                </div>
             </div>
         </section>
 

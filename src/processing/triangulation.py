@@ -88,7 +88,7 @@ def triangulate_pose_sequence(
     calibration: CalibrationResult,
     confidence_left: Optional[np.ndarray] = None,
     confidence_right: Optional[np.ndarray] = None,
-    min_confidence: float = 0.3,
+    min_confidence: float = 0.1,
 ) -> Tuple[np.ndarray, np.ndarray]:
     """
     Triangulate a full sequence of 2D pose detections into 3D.
@@ -170,3 +170,57 @@ def triangulate_pose_sequence(
     )
 
     return poses_3d, valid_mask
+
+
+def postprocess_3d_poses(
+    poses_3d: np.ndarray,
+    valid_mask: np.ndarray,
+    jump_threshold: float = 0.5,
+    alpha: float = 0.3
+) -> Tuple[np.ndarray, np.ndarray]:
+    """
+    Post-processes triangulated 3D poses to fix orientation, reject outliers, and smooth.
+    
+    Args:
+        poses_3d: (T, J, 3) array of triangulated 3D joint positions.
+        valid_mask: (T, J) boolean array of valid joints.
+        jump_threshold: Maximum allowed Euclidean distance (meters) between valid frames.
+        alpha: Smoothing factor for Exponential Moving Average (0 = no update, 1 = no smoothing).
+    
+    Returns:
+        poses_3d_filtered: The processed (T, J, 3) array.
+        valid_mask_filtered: The updated (T, J) boolean mask.
+    """
+    T, J, _ = poses_3d.shape
+    filtered_poses = poses_3d.copy()
+    filtered_mask = valid_mask.copy()
+    
+    # 1. Axis Inversion (OpenCV Y points down, flip to Y-up for rendering/biomechanics)
+    filtered_poses[:, :, 1] *= -1
+
+    # 2. Outlier Rejection & Smoothing per-joint
+    for j in range(J):
+        last_valid_pos = None
+        
+        for t in range(T):
+            if not filtered_mask[t, j]:
+                continue
+                
+            curr_pos = filtered_poses[t, j]
+            
+            if last_valid_pos is not None:
+                dist = np.linalg.norm(curr_pos - last_valid_pos)
+                if dist > jump_threshold:
+                    # Reject as outlier
+                    filtered_poses[t, j] = np.nan
+                    filtered_mask[t, j] = False
+                    continue
+                    
+                # Exponential Moving Average Smoothing
+                smoothed_pos = (alpha * curr_pos) + ((1 - alpha) * last_valid_pos)
+                filtered_poses[t, j] = smoothed_pos
+                last_valid_pos = smoothed_pos
+            else:
+                last_valid_pos = curr_pos
+
+    return filtered_poses, filtered_mask

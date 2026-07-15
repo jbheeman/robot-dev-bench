@@ -1,4 +1,25 @@
-document.addEventListener('DOMContentLoaded', () => {
+document.addEventListener('DOMContentLoaded', async () => {
+    
+    // Check calibration status on load
+    const calBadge = document.getElementById('calibration-status-badge');
+    if (calBadge) {
+        try {
+            const resp = await fetch('/api/calibration_status');
+            const calData = await resp.json();
+            if (calData.status === 'ok') {
+                calBadge.textContent = '✅ Calibrated';
+                calBadge.style.background = 'rgba(46, 204, 113, 0.2)';
+                calBadge.style.color = '#2ecc71';
+            } else {
+                calBadge.textContent = '⚠️ Not Calibrated';
+                calBadge.style.background = 'rgba(231, 76, 60, 0.2)';
+                calBadge.style.color = '#e74c3c';
+            }
+        } catch (e) {
+            calBadge.textContent = '❌ Error';
+        }
+    }
+
     const runAnalysisBtn = document.getElementById('run-analysis-btn');
     const loadingOverlay = document.getElementById('loading-overlay');
     const resultsSection = document.getElementById('results-section');
@@ -50,8 +71,9 @@ document.addEventListener('DOMContentLoaded', () => {
 
 
     function handleFileSelection(file, isRight, successId, defaultId, filenameId, zoneId) {
-        if (!file.name.endsWith('.mp4')) {
-            alert("Only .mp4 files are supported.");
+        const ext = file.name.toLowerCase();
+        if (!ext.endsWith('.mp4') && !ext.endsWith('.mov')) {
+            alert("Only .mp4 and .mov files are supported.");
             return;
         }
 
@@ -88,16 +110,42 @@ document.addEventListener('DOMContentLoaded', () => {
                 formData.append('task', taskSelect.value);
             }
 
-            const response = await fetch('/api/upload_av', {
+            const uploadResponse = await fetch('/api/upload_av', {
                 method: 'POST',
                 body: formData
             });
 
-            if (!response.ok) throw new Error('Network response was not ok');
-            const data = await response.json();
-            
-            if (data.status !== 'success') {
-                throw new Error(data.message || 'Upload failed');
+            if (!uploadResponse.ok) throw new Error('Network response was not ok');
+            const initData = await uploadResponse.json();
+
+            if (initData.status !== 'processing') {
+                throw new Error(initData.message || 'Job creation failed');
+            }
+
+            const jobId = initData.job_id;
+            const progressEl = document.getElementById('loading-progress');
+            const textEl = document.getElementById('loading-text');
+
+            let data = null;
+            while (true) {
+                await new Promise(r => setTimeout(r, 1000));
+                const pollResp = await fetch(`/api/status/${jobId}`);
+                if (!pollResp.ok) throw new Error('Job status check failed');
+                const st = await pollResp.json();
+
+                if (st.status === 'processing') {
+                    if (progressEl) {
+                        progressEl.style.width = (st.progress * 100) + '%';
+                    }
+                    if (textEl && st.message) {
+                        textEl.textContent = st.message + ' (' + Math.round(st.progress * 100) + '%)';
+                    }
+                } else if (st.status === 'success') {
+                    data = st.data;
+                    break;
+                } else {
+                    throw new Error(st.message || 'Job failed');
+                }
             }
 
             // Update Classification Tier

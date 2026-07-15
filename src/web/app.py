@@ -1,5 +1,8 @@
 import os
 import tempfile
+import uuid
+import asyncio
+from fastapi import BackgroundTasks
 import logging
 import numpy as np
 import pandas as pd
@@ -11,7 +14,7 @@ from pydantic import BaseModel
 from src.ingestion.schema_mapper import SchemaMapper
 from src.processing.calibration import calibrate_stereo, CalibrationResult
 from src.processing.pose_estimation import estimate_stereo_poses
-from src.processing.triangulation import triangulate_pose_sequence
+from src.processing.triangulation import triangulate_pose_sequence, postprocess_3d_poses
 from src.features.biomechanics import (
     compute_smoothness_3d,
     compute_sparc_3d,
@@ -33,7 +36,16 @@ from src.classification.rules import RuleBasedClassifier
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
+JOB_STORE = {}
+
+
 app = FastAPI(title="Unitree G1-Edu Benchmarking Dashboard (AV Mode)")
+
+@app.get("/api/status/{job_id}")
+async def get_job_status(job_id: str):
+    if job_id not in JOB_STORE:
+        return JSONResponse(status_code=404, content={"status": "error", "message": "Job not found"})
+    return JSONResponse(content=JOB_STORE[job_id])
 
 # Define path to static files
 STATIC_DIR = os.path.join(os.path.dirname(__file__), "static")
@@ -62,8 +74,48 @@ def _load_cached_calibration() -> CalibrationResult | None:
     return None
 
 
+def _run_calibration_job(job_id, left_path, right_path, board_cols, board_rows, square_size, marker_size):
+    global _active_calibration
+    try:
+        logger.info(
+            "Running stereo calibration (board=%dx%d, square=%.3fm) …",
+            board_cols, board_rows, square_size,
+        )
+        def progress_cb(p):
+            JOB_STORE[job_id]["progress"] = p
+
+        from src.processing.calibration import calibrate_stereo
+        result = calibrate_stereo(
+            left_path,
+            right_path,
+            board_size=(board_cols, board_rows),
+            square_size=square_size,
+            marker_size=marker_size,
+            progress_callback=progress_cb
+        )
+
+        # Persist and cache
+        os.makedirs(CALIBRATION_DIR, exist_ok=True)
+        result.save(CALIBRATION_FILE)
+        _active_calibration = result
+        
+        JOB_STORE[job_id]["status"] = "success"
+        JOB_STORE[job_id]["message"] = "Calibration successful."
+        JOB_STORE[job_id]["data"] = result.to_dict()
+
+    except Exception as e:
+        logger.error("Calibration failed: %s", e, exc_info=True)
+        JOB_STORE[job_id]["status"] = "error"
+        JOB_STORE[job_id]["message"] = str(e)
+    finally:
+        if os.path.exists(left_path):
+            os.remove(left_path)
+        if os.path.exists(right_path):
+            os.remove(right_path)
+
 @app.post("/api/calibrate")
 async def calibrate_cameras(
+    background_tasks: BackgroundTasks,
     left_video: UploadFile = File(...),
     right_video: UploadFile = File(...),
     board_cols: int = Form(10),
@@ -71,64 +123,25 @@ async def calibrate_cameras(
     square_size: float = Form(0.025),
     marker_size: float = Form(0.015),
 ):
-    """
-    Accepts two .mp4 calibration videos (checkerboard visible in both),
-    runs the full stereo calibration pipeline, persists the result,
-    and returns the calibration parameters.
-    """
-    global _active_calibration
+    ext_left = os.path.splitext(left_video.filename)[1].lower()
+    ext_right = os.path.splitext(right_video.filename)[1].lower()
 
-    if not left_video.filename.endswith(".mp4") or not right_video.filename.endswith(".mp4"):
-        raise HTTPException(status_code=400, detail="Only .mp4 files are supported.")
+    if ext_left not in [".mp4", ".mov"] or ext_right not in [".mp4", ".mov"]:
+        raise HTTPException(status_code=400, detail="Only .mp4 and .mov files are supported.")
 
-    left_tmp_path = None
-    right_tmp_path = None
+    left_tmp = tempfile.NamedTemporaryFile(suffix=ext_left, delete=False)
+    left_tmp.write(await left_video.read())
+    left_tmp.close()
 
-    try:
-        # Save uploads to temp files
-        left_tmp = tempfile.NamedTemporaryFile(suffix=".mp4", delete=False)
-        left_tmp.write(await left_video.read())
-        left_tmp.close()
-        left_tmp_path = left_tmp.name
+    right_tmp = tempfile.NamedTemporaryFile(suffix=ext_right, delete=False)
+    right_tmp.write(await right_video.read())
+    right_tmp.close()
 
-        right_tmp = tempfile.NamedTemporaryFile(suffix=".mp4", delete=False)
-        right_tmp.write(await right_video.read())
-        right_tmp.close()
-        right_tmp_path = right_tmp.name
-
-        logger.info(
-            "Running stereo calibration (board=%dx%d, square=%.3fm) …",
-            board_cols, board_rows, square_size,
-        )
-
-        result = calibrate_stereo(
-            left_tmp_path,
-            right_tmp_path,
-            board_size=(board_cols, board_rows),
-            square_size=square_size,
-            marker_size=marker_size,
-        )
-
-        # Persist and cache
-        os.makedirs(CALIBRATION_DIR, exist_ok=True)
-        result.save(CALIBRATION_FILE)
-        _active_calibration = result
-
-        return JSONResponse(content={
-            "status": "success",
-            "calibration": result.to_dict(),
-        })
-
-    except ValueError as ve:
-        return JSONResponse(status_code=400, content={"status": "error", "message": str(ve)})
-    except Exception as e:
-        logger.error("Calibration failed: %s", e, exc_info=True)
-        return JSONResponse(status_code=500, content={"status": "error", "message": str(e)})
-    finally:
-        if left_tmp_path and os.path.exists(left_tmp_path):
-            os.remove(left_tmp_path)
-        if right_tmp_path and os.path.exists(right_tmp_path):
-            os.remove(right_tmp_path)
+    job_id = str(uuid.uuid4())
+    JOB_STORE[job_id] = {"status": "processing", "progress": 0.0, "message": "Extracting corners..."}
+    
+    background_tasks.add_task(_run_calibration_job, job_id, left_tmp.name, right_tmp.name, board_cols, board_rows, square_size, marker_size)
+    return JSONResponse(content={"status": "processing", "job_id": job_id})
 
 
 @app.get("/api/calibration_status")
@@ -140,53 +153,23 @@ async def calibration_status():
     return JSONResponse(content={"status": "ok", "calibration": cal.to_dict()})
 
 
-@app.post("/api/upload_av")
-async def upload_av_files(
-    left_camera: UploadFile = File(...),
-    right_camera: UploadFile = File(...),
-    task: str = Form("general"),
-):
-    """
-    Accepts two .mp4 video files (left and right cameras),
-    validates them, and saves them to temporary storage for processing.
-    """
-    if not left_camera.filename.endswith(".mp4") or not right_camera.filename.endswith(".mp4"):
-        raise HTTPException(
-            status_code=400,
-            detail="Only .mp4 files are supported for camera feeds.",
-        )
 
+def _run_av_job(job_id, left_path, right_path, task):
     try:
-        # Save left camera
-        left_tmp = tempfile.NamedTemporaryFile(suffix=".mp4", delete=False)
-        left_contents = await left_camera.read()
-        left_tmp.write(left_contents)
-        left_tmp.close()
-
-        # Save right camera
-        right_tmp = tempfile.NamedTemporaryFile(suffix=".mp4", delete=False)
-        right_contents = await right_camera.read()
-        right_tmp.write(right_contents)
-        right_tmp.close()
-
-        logger.info(f"Received AV payload. Left: {left_camera.filename}, Right: {right_camera.filename}")
-
-        # Check that a calibration exists
         cal = _load_cached_calibration()
         if cal is None:
-            return JSONResponse(status_code=400, content={
-                "status": "error",
-                "message": "No stereo calibration found. Please calibrate cameras first.",
-            })
+            JOB_STORE[job_id]["status"] = "error"
+            JOB_STORE[job_id]["message"] = "No stereo calibration found. Please calibrate cameras first."
+            return
 
-        # Step 1: 2D Pose Estimation on both cameras
-        logger.info("Running 2D pose estimation on stereo pair …")
+        def progress_cb(p):
+            JOB_STORE[job_id]["progress"] = p * 0.9  # Pose estimation is 90% of the time
+
         left_pose, right_pose = estimate_stereo_poses(
-            left_tmp.name, right_tmp.name, device="cpu",
+            left_path, right_path, device="cuda:0", progress_callback=progress_cb
         )
 
-        # Step 2: Triangulate into 3D
-        logger.info("Triangulating 2D joints into 3D …")
+        JOB_STORE[job_id]["progress"] = 0.9
         poses_3d, valid_mask = triangulate_pose_sequence(
             left_pose.keypoints,
             right_pose.keypoints,
@@ -195,7 +178,8 @@ async def upload_av_files(
             confidence_right=right_pose.confidence,
         )
 
-        # Step 3: Biomechanics features
+        poses_3d, valid_mask = postprocess_3d_poses(poses_3d, valid_mask)
+
         fps = left_pose.fps or 30.0
         smoothness = compute_smoothness_3d(poses_3d, fps)
         sparc = compute_sparc_3d(poses_3d, fps)
@@ -218,17 +202,26 @@ async def upload_av_files(
             "transition_time": transition.get("transition_time", 0.0),
         }
 
-        # Step 4: Rule-based classification
+        import math
+        clean_metrics = {}
+        for k, v in metrics.items():
+            if v is None or (isinstance(v, (float, np.floating)) and np.isnan(v)):
+                clean_metrics[k] = 0.0
+            else:
+                clean_metrics[k] = float(v)
+        metrics = clean_metrics
+
         classifier = RuleBasedClassifier()
         score, tier = classifier.classify(metrics, task)
 
         poses_3d_clean = np.where(np.isnan(poses_3d), None, poses_3d).tolist()
         valid_mask_clean = valid_mask.tolist()
 
-        return JSONResponse(content={
+        JOB_STORE[job_id]["progress"] = 1.0
+        JOB_STORE[job_id]["status"] = "success"
+        JOB_STORE[job_id]["message"] = "Analysis complete."
+        JOB_STORE[job_id]["data"] = {
             "task": task,
-            "status": "success",
-            "message": "Analysis complete.",
             "metrics": metrics,
             "poses_3d": poses_3d_clean,
             "valid_mask": valid_mask_clean,
@@ -236,19 +229,48 @@ async def upload_av_files(
                 "score": score,
                 "tier": tier,
             }
-        })
+        }
 
     except Exception as e:
         logger.error(f"Error processing AV upload: {e}", exc_info=True)
-        return JSONResponse(
-            status_code=500,
-            content={"status": "error", "message": str(e)},
-        )
+        JOB_STORE[job_id]["status"] = "error"
+        JOB_STORE[job_id]["message"] = str(e)
     finally:
-        if "left_tmp" in locals() and os.path.exists(left_tmp.name):
-            os.remove(left_tmp.name)
-        if "right_tmp" in locals() and os.path.exists(right_tmp.name):
-            os.remove(right_tmp.name)
+        if os.path.exists(left_path):
+            os.remove(left_path)
+        if os.path.exists(right_path):
+            os.remove(right_path)
+
+@app.post("/api/upload_av")
+async def upload_av_files(
+    background_tasks: BackgroundTasks,
+    left_camera: UploadFile = File(...),
+    right_camera: UploadFile = File(...),
+    task: str = Form("general"),
+):
+    ext_left = os.path.splitext(left_camera.filename)[1].lower()
+    ext_right = os.path.splitext(right_camera.filename)[1].lower()
+
+    if ext_left not in [".mp4", ".mov"] or ext_right not in [".mp4", ".mov"]:
+        raise HTTPException(status_code=400, detail="Only .mp4 and .mov files are supported for camera feeds.")
+
+    left_tmp = tempfile.NamedTemporaryFile(suffix=ext_left, delete=False)
+    right_tmp = tempfile.NamedTemporaryFile(suffix=ext_right, delete=False)
+    
+    left_contents = await left_camera.read()
+    left_tmp.write(left_contents)
+    left_tmp.close()
+    
+    right_contents = await right_camera.read()
+    right_tmp.write(right_contents)
+    right_tmp.close()
+
+    job_id = str(uuid.uuid4())
+    JOB_STORE[job_id] = {"status": "processing", "progress": 0.0, "message": "Estimating 3D poses..."}
+    
+    background_tasks.add_task(_run_av_job, job_id, left_tmp.name, right_tmp.name, task)
+    return JSONResponse(content={"status": "processing", "job_id": job_id})
+
 
 
 def extract_metrics_from_dataframe(df: pd.DataFrame) -> dict:

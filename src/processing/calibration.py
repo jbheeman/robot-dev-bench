@@ -16,7 +16,7 @@ import os
 import cv2
 import numpy as np
 from dataclasses import dataclass, asdict, field
-from typing import Tuple, List, Optional
+from typing import Tuple, List, Optional, Callable
 from src.processing.sync import get_video_offset
 
 logger = logging.getLogger(__name__)
@@ -142,6 +142,7 @@ def extract_corners_from_video_pair(
     square_size: float = 0.025,
     marker_size: float = 0.015,
     frame_skip: int = 1,
+    progress_callback: Optional[Callable[[float], None]] = None,
 ) -> Tuple[List[np.ndarray], List[np.ndarray], List[np.ndarray], List[np.ndarray], Tuple[int, int]]:
     cap_l = cv2.VideoCapture(left_path)
     cap_r = cv2.VideoCapture(right_path)
@@ -180,11 +181,15 @@ def extract_corners_from_video_pair(
     detectorParams = cv2.aruco.DetectorParameters()
     charucoDetector = cv2.aruco.CharucoDetector(board)
 
+    total_frames = int(cap_l.get(cv2.CAP_PROP_FRAME_COUNT))
     while True:
         ret_l, frame_l = cap_l.read()
         ret_r, frame_r = cap_r.read()
         if not ret_l or not ret_r:
             break
+        
+        if progress_callback and total_frames > 0 and frame_idx % 30 == 0:
+            progress_callback(min(1.0, frame_idx / total_frames))
 
         if frame_idx % frame_skip != 0:
             frame_idx += 1
@@ -234,6 +239,9 @@ def extract_corners_from_video_pair(
 
         frame_idx += 1
 
+    if progress_callback:
+        progress_callback(1.0)
+
     cap_l.release()
     cap_r.release()
 
@@ -252,6 +260,7 @@ def calibrate_stereo(
     board_size: Tuple[int, int] = (10, 7),
     square_size: float = 0.025,
     marker_size: float = 0.015,
+    progress_callback: Optional[Callable[[float], None]] = None,
 ) -> CalibrationResult:
     result = CalibrationResult(
         board_size=board_size,
@@ -261,7 +270,7 @@ def calibrate_stereo(
 
     # Step 1: extract corners
     left_corners, left_ids, right_corners, right_ids, img_size = extract_corners_from_video_pair(
-        left_video_path, right_video_path, board_size, square_size, marker_size
+        left_video_path, right_video_path, board_size, square_size, marker_size, progress_callback=progress_callback
     )
     result.image_size = img_size
     result.num_valid_pairs = len(left_corners)

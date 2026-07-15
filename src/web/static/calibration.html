@@ -174,7 +174,7 @@
             <div style="display: flex; gap: 2rem; width: 100%;">
                 <!-- Left Calibration Video -->
                 <div id="drop-zone-cal-left" class="drop-zone" style="flex: 1;">
-                    <input type="file" id="cal-input-left" class="file-input" accept=".mp4" hidden>
+                    <input type="file" id="cal-input-left" class="file-input" accept=".mp4,.mov" hidden>
                     <div class="drop-content" id="cal-default-left">
                         <svg class="upload-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
                             <rect x="2" y="2" width="20" height="20" rx="2.18" ry="2.18"></rect>
@@ -194,7 +194,7 @@
                 </div>
                 <!-- Right Calibration Video -->
                 <div id="drop-zone-cal-right" class="drop-zone" style="flex: 1;">
-                    <input type="file" id="cal-input-right" class="file-input" accept=".mp4" hidden>
+                    <input type="file" id="cal-input-right" class="file-input" accept=".mp4,.mov" hidden>
                     <div class="drop-content" id="cal-default-right">
                         <svg class="upload-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
                             <rect x="2" y="2" width="20" height="20" rx="2.18" ry="2.18"></rect>
@@ -300,7 +300,19 @@
     <script src="https://unpkg.com/three@0.147.0/build/three.min.js"></script>
     <script src="https://unpkg.com/three@0.147.0/examples/js/controls/OrbitControls.js"></script>
     <script>
-    document.addEventListener('DOMContentLoaded', () => {
+    document.addEventListener('DOMContentLoaded', async () => {
+        try {
+            const resp = await fetch('/api/calibration_status');
+            const calData = await resp.json();
+            if (calData.status === 'ok' && calData.calibration) {
+                document.getElementById('results-section').classList.remove('hidden');
+                // Give DOM a moment to update layout before rendering 3D
+                setTimeout(() => renderResults(calData.calibration), 50);
+            }
+        } catch (e) {
+            console.error("Failed to fetch existing calibration", e);
+        }
+
         let fileLeft = null;
         let fileRight = null;
 
@@ -328,7 +340,8 @@
         }
 
         function selectFile(file, isRight, successId, defaultId, filenameId, zoneId) {
-            if (!file.name.endsWith('.mp4')) { alert('Only .mp4 files supported.'); return; }
+            const ext = file.name.toLowerCase();
+            if (!ext.endsWith('.mp4') && !ext.endsWith('.mov')) { alert('Only .mp4 and .mov files supported.'); return; }
             if (isRight) { fileRight = file; } else { fileLeft = file; }
             document.getElementById(zoneId).classList.add(isRight ? 'has-file-b' : 'has-file');
             document.getElementById(defaultId).classList.add('hidden');
@@ -356,14 +369,36 @@
                 fd.append('square_size', document.getElementById('square-size').value);
                 fd.append('marker_size', document.getElementById('marker-size').value);
 
-                const resp = await fetch('/api/calibrate', { method: 'POST', body: fd });
-                const data = await resp.json();
-                if (data.status !== 'success') throw new Error(data.message || 'Calibration failed');
+                const uploadResponse = await fetch('/api/calibrate', { method: 'POST', body: fd });
+                const initData = await uploadResponse.json();
+                if (initData.status !== 'processing') throw new Error(initData.message || 'Job creation failed');
+                
+                const jobId = initData.job_id;
+                const progressEl = document.getElementById('loading-progress');
+                const textEl = document.getElementById('loading-text');
+                
+                let data = null;
+                while (true) {
+                    await new Promise(r => setTimeout(r, 1000));
+                    const pollResp = await fetch(`/api/status/${jobId}`);
+                    if (!pollResp.ok) throw new Error('Job status check failed');
+                    const st = await pollResp.json();
+                    
+                    if (st.status === 'processing') {
+                        if (progressEl) progressEl.style.width = (st.progress * 100) + '%';
+                        if (textEl && st.message) textEl.textContent = st.message + ' (' + Math.round(st.progress * 100) + '%)';
+                    } else if (st.status === 'success') {
+                        data = st.data;
+                        break;
+                    } else {
+                        throw new Error(st.message || 'Calibration failed');
+                    }
+                }
 
                 loading.classList.add('hidden');
                 results.classList.remove('hidden');
                 // Render results AFTER unhiding so the 3D container has actual width/height
-                renderResults(data.calibration);
+                renderResults(data);
             } catch (err) {
                 alert('Calibration error: ' + err.message);
                 loading.classList.add('hidden');

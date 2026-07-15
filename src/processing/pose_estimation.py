@@ -30,7 +30,7 @@ Standard COCO body keypoints (17):
 import logging
 import os
 from dataclasses import dataclass, field
-from typing import List, Optional, Tuple
+from typing import Callable, List, Optional, Tuple
 
 import cv2
 import numpy as np
@@ -112,7 +112,7 @@ class PoseEstimator:
     def __init__(
         self,
         device: str = "cpu",
-        det_score_threshold: float = 0.5,
+        det_score_threshold: float = 0.15,
         keypoint_indices: Optional[List[int]] = None,
     ):
         """
@@ -216,6 +216,7 @@ class PoseEstimator:
         video_path: str,
         max_frames: Optional[int] = None,
         skip_frames: int = 0,
+        progress_callback: Optional[Callable[[float], None]] = None,
     ) -> PoseResult:
         """
         Run 2D pose estimation on every frame of a video.
@@ -266,20 +267,34 @@ class PoseEstimator:
                 det_result = self._infer_det(self._detector, frame)
             det_instances = det_result.pred_instances
 
-            # Filter to "person" class (class 0 in COCO) and above threshold
-            person_mask = (det_instances.labels == 0) & (det_instances.scores >= self.det_score_threshold)
+            # Filter to detections above threshold
+            person_mask = (det_instances.scores >= self.det_score_threshold)
             bboxes = det_instances.bboxes[person_mask].cpu().numpy()
 
             if len(bboxes) == 0:
                 # No detection: fill with zeros
                 all_keypoints.append(np.zeros((n_joints, 2), dtype=np.float32))
                 all_confidence.append(np.zeros(n_joints, dtype=np.float32))
+                if progress_callback and total_frames > 0:
+                    progress_callback(frame_idx / total_frames)
                 continue
 
-            # Step 2: Run pose estimation (take the highest-confidence detection)
-            scores = det_instances.scores[person_mask].cpu().numpy()
-            best_idx = np.argmax(scores)
-            best_bbox = bboxes[best_idx]
+            # Step 2: Run pose estimation (prioritize person class, fallback to largest box)
+            labels = det_instances.labels[person_mask].cpu().numpy()
+            person_indices = np.where(labels == 0)[0]
+
+            if len(person_indices) > 0:
+                # If there are people detected, pick the highest-confidence person
+                scores = det_instances.scores[person_mask].cpu().numpy()
+                best_person_idx = person_indices[np.argmax(scores[person_indices])]
+                best_bbox = bboxes[best_person_idx]
+            else:
+                # If no person detected (e.g. motionless robot), pick the largest bounding box
+                widths = bboxes[:, 2] - bboxes[:, 0]
+                heights = bboxes[:, 3] - bboxes[:, 1]
+                areas = widths * heights
+                best_idx = np.argmax(areas)
+                best_bbox = bboxes[best_idx]
 
             with DefaultScope.overwrite_default_scope('mmpose'):
                 pose_results = self._infer_pose(
@@ -310,6 +325,9 @@ class PoseEstimator:
             if (frame_idx + 1) % 50 == 0:
                 logger.info("Processed %d / %d frames", frame_idx + 1, total_frames)
 
+            if progress_callback and total_frames > 0:
+                progress_callback((frame_idx + 1) / total_frames)
+
         cap.release()
 
         keypoints_arr = np.stack(all_keypoints)  # (T, J, 2)
@@ -334,8 +352,9 @@ class PoseEstimator:
 def estimate_stereo_poses(
     left_video_path: str,
     right_video_path: str,
-    device: str = "cpu",
     max_frames: Optional[int] = None,
+    device: str = "cpu",
+    progress_callback: Optional[Callable[[float], None]] = None,
 ) -> Tuple[PoseResult, PoseResult]:
     """
     Convenience function to run 2D pose estimation on both cameras of a
@@ -364,10 +383,18 @@ def estimate_stereo_poses(
         skip_r = int(abs(offset_seconds) * fps_r)
 
     logger.info("Estimating poses on LEFT camera …")
-    left_result = estimator.estimate_from_video(left_video_path, max_frames, skip_frames=skip_l)
+    def left_progress(p):
+        if progress_callback: progress_callback(p * 0.5)
+    left_result = estimator.estimate_from_video(
+        left_video_path, max_frames, skip_frames=skip_l, progress_callback=left_progress
+    )
 
     logger.info("Estimating poses on RIGHT camera …")
-    right_result = estimator.estimate_from_video(right_video_path, max_frames, skip_frames=skip_r)
+    def right_progress(p):
+        if progress_callback: progress_callback(0.5 + (p * 0.5))
+    right_result = estimator.estimate_from_video(
+        right_video_path, max_frames, skip_frames=skip_r, progress_callback=right_progress
+    )
 
     # Align the sequences to be the same length (clip the longer one from the end)
     min_frames = min(left_result.num_frames, right_result.num_frames)

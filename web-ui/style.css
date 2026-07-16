@@ -1,0 +1,302 @@
+:root {
+    --bg-color: #0b0f19;
+    --panel-bg: rgba(25, 33, 51, 0.7);
+    --text-primary: #f0f4f8;
+    --text-secondary: #94a3b8;
+    --accent-yellow: #fcd34d;
+    --accent-yellow-hover: #fbbf24;
+    --accent-yellow-glow: rgba(252, 211, 77, 0.2);
+    --border-color: rgba(255, 255, 255, 0.1);
+}
+
+* {
+    margin: 0;
+    padding: 0;
+    box-sizing: border-box;
+    font-family: 'Outfit', sans-serif;
+}
+
+body {
+    background-color: var(--bg-color);
+    color: var(--text-primary);
+    min-height: 100vh;
+    display: flex;
+    justify-content: center;
+    align-items: flex-start;
+    padding: 2rem;
+    background-image: radial-gradient(circle at top right, rgba(252, 211, 77, 0.1) 0%, transparent 40%),
+                      radial-gradient(circle at bottom left, rgba(59, 130, 246, 0.1) 0%, transparent 40%);
+}
+
+.app-container {
+    width: 100%;
+    max-width: 800px;
+    display: flex;
+    flex-direction: column;
+    gap: 2rem;
+}
+
+header {
+    text-align: center;
+    margin-bottom: 1rem;
+}
+
+h1 {
+    font-size: 3rem;
+    font-weight: 800;
+    letter-spacing: -1px;
+    margin-bottom: 0.5rem;
+}
+
+.highlight {
+    color: var(--accent-yellow);
+    text-shadow: 0 0 15px var(--accent-yellow-glow);
+}
+
+header p {
+    color: var(--text-secondary);
+    font-size: 1.1rem;
+}
+
+.glass-panel {
+    background: var(--panel-bg);
+    backdrop-filter: blur(12px);
+    -webkit-backdrop-filter: blur(12px);
+    border: 1px solid var(--border-color);
+    border-radius: 16px;
+    padding: 2rem;
+    box-shadow: 0 8px 32px 0 rgba(0, 0, 0, 0.3);
+}
+
+.form-group {
+    margin-bottom: 1.5rem;
+}
+
+.file-input-group {
+    position: relative;
+    border: 2px dashed var(--border-color);
+    border-radius: 12px;
+    padding: 3rem 1rem;
+    text-align: center;
+    transition: all 0.3s ease;
+    cursor: pointer;
+}
+
+.file-input-group:hover, .file-input-group.dragover {
+    border-color: var(--accent-yellow);
+    background: var(--accent-yellow-glow);
+}
+
+input[type="file"] {
+    position: absolute;
+    top: 0;
+    left: 0;
+    width: 100%;
+    height: 100%;
+    opacity: 0;
+    cursor: pointer;
+}
+
+.file-label {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 0.5rem;
+    cursor: pointer;
+}
+
+.file-icon {
+    font-size: 2.5rem;
+}
+
+.inline-group {
+    display: flex;
+    align-items: center;
+    gap: 1rem;
+}
+
+.inline-group label {
+    font-weight: 600;
+    color: var(--text-secondary);
+}
+
+input[type="number"] {
+    background: rgba(0, 0, 0, 0.2);
+    border: 1px solid var(--border-color);
+    color: var(--text-primary);
+    padding: 0.5rem 1rem;
+    border-radius: 8px;
+    outline: none;
+    font-size: 1rem;
+    width: 120px;
+    transition: border-color 0.2s;
+}
+
+input[type="number"]:focus {
+    border-color: var(--accent-yellow);
+}
+
+.preview-container {
+    margin-top: 2rem;
+    margin-bottom: 2rem;
+}
+
+.instruction {
+    color: var(--accent-yellow);
+    margin-bottom: 0.5rem;
+    font-weight: 600;
+}
+
+.video-wrapper {
+    position: relative;
+    width: 100%;
+    border-radius: 8px;
+    overflow: hidden;
+    border: 1px solid var(--border-color);
+    background: #000;
+}
+
+video {
+    display: block;
+    width: 100%;
+    height: auto;
+}
+
+canvas {
+    position: absolute;
+    top: 0;
+    left: 0;
+    width: 100%;
+    height: 100%;
+    cursor: crosshair;
+}
+
+.video-controls {
+    display: flex;
+    align-items: center;
+    gap: 1rem;
+    padding: 0.75rem;
+    background: rgba(0, 0, 0, 0.5);
+    border-bottom-left-radius: 8px;
+    border-bottom-right-radius: 8px;
+    border: 1px solid var(--border-color);
+    border-top: none;
+    margin-top: -4px; /* overlap with video wrapper border */
+}
+
+.video-controls input[type="range"] {
+    flex-grow: 1;
+    cursor: pointer;
+}
+
+#video-time-display {
+    font-size: 0.9rem;
+    color: var(--text-secondary);
+    min-width: 80px;
+    text-align: right;
+}
+
+.btn {
+    display: inline-block;
+    padding: 0.75rem 1.5rem;
+    border-radius: 8px;
+    font-size: 1rem;
+    font-weight: 600;
+    cursor: pointer;
+    transition: all 0.2s ease;
+    border: none;
+    outline: none;
+}
+
+.btn-primary {
+    background: var(--accent-yellow);
+    color: #000;
+    width: 100%;
+    font-size: 1.1rem;
+}
+
+.btn-primary:hover:not(:disabled) {
+    background: var(--accent-yellow-hover);
+    transform: translateY(-2px);
+    box-shadow: 0 4px 15px var(--accent-yellow-glow);
+}
+
+.btn-primary:disabled {
+    background: #475569;
+    color: #94a3b8;
+    cursor: not-allowed;
+}
+
+.btn-secondary {
+    background: rgba(255, 255, 255, 0.1);
+    color: var(--text-primary);
+    margin-top: 1rem;
+}
+
+.btn-secondary:hover {
+    background: rgba(255, 255, 255, 0.2);
+}
+
+.results-section h2 {
+    margin-bottom: 1.5rem;
+    text-align: center;
+    color: var(--accent-yellow);
+}
+
+.metrics-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
+    gap: 1rem;
+}
+
+.metric-card {
+    background: rgba(0, 0, 0, 0.2);
+    border: 1px solid var(--border-color);
+    border-radius: 12px;
+    padding: 1.5rem;
+    text-align: center;
+}
+
+.metric-title {
+    color: var(--text-secondary);
+    font-size: 0.9rem;
+    text-transform: uppercase;
+    letter-spacing: 1px;
+    margin-bottom: 0.5rem;
+}
+
+.metric-value {
+    font-size: 2rem;
+    font-weight: 800;
+    color: var(--text-primary);
+}
+
+/* Loading Overlay */
+.loading-overlay {
+    position: fixed;
+    top: 0;
+    left: 0;
+    width: 100%;
+    height: 100%;
+    background: rgba(11, 15, 25, 0.8);
+    backdrop-filter: blur(5px);
+    display: flex;
+    flex-direction: column;
+    justify-content: center;
+    align-items: center;
+    z-index: 1000;
+}
+
+.spinner {
+    width: 50px;
+    height: 50px;
+    border: 5px solid rgba(252, 211, 77, 0.3);
+    border-radius: 50%;
+    border-top-color: var(--accent-yellow);
+    animation: spin 1s ease-in-out infinite;
+    margin-bottom: 1rem;
+}
+
+@keyframes spin {
+    to { transform: rotate(360deg); }
+}

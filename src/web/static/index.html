@@ -27,7 +27,7 @@
                     <h1 class="gradient-text">Unitree G1-Edu Benchmarks</h1>
                     <p class="subtitle">External AV Black-Box Evaluation System</p>
                 </div>
-                <a href="/calibration.html" style="color: var(--primary); text-decoration: none; font-size: 0.95rem; transition: opacity 0.2s;">⚙ Calibrate Cameras</a>
+
             </div>
             <div style="display: flex; gap: 1rem; margin-top: 1rem;">
                 <a href="/" style="padding: 0.5rem 1rem; background: var(--primary); color: white; border-radius: 8px; text-decoration: none; font-weight: 500;">Video Pipeline</a>
@@ -47,22 +47,13 @@
                 </select>
             </div>
 
-            <div class="task-selector-container">
-                <label class="task-label">Camera Mode:</label>
-                <div style="display: flex; gap: 0.5rem;">
-                    <button type="button" id="mode-btn-stereo" class="browse-btn mode-btn active-mode">Two Cameras (Stereo)</button>
-                    <button type="button" id="mode-btn-mono" class="browse-btn mode-btn">Single Camera</button>
-                </div>
-            </div>
-            <p id="mono-hint" class="drop-desc hidden" style="margin: -0.5rem 0 1rem;">
-                Depth is inferred from known G1 bone lengths instead of triangulation &mdash; less accurate than stereo, especially further from the hips.
-            </p>
+            
 
             <div style="display: flex; gap: 2rem; width: 100%;">
                 <!-- Left Camera Drop Zone -->
-                <div id="drop-zone-left" class="drop-zone" style="flex: 1;">
-                    <input type="file" id="file-input-left" class="file-input" accept=".mp4,.mov" hidden>
-                    <div class="drop-content" id="drop-content-default-left">
+                <div id="drop-zone-camera" class="drop-zone" style="flex: 1;">
+                    <input type="file" id="file-input-camera" class="file-input" accept=".mp4,.mov" hidden>
+                    <div class="drop-content" id="drop-content-default-camera">
                         <svg class="upload-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
                             <rect x="2" y="2" width="20" height="20" rx="2.18" ry="2.18"></rect>
                             <line x1="7" y1="2" x2="7" y2="22"></line>
@@ -73,48 +64,21 @@
                             <line x1="17" y1="17" x2="22" y2="17"></line>
                             <line x1="17" y1="7" x2="22" y2="7"></line>
                         </svg>
-                        <h3 class="drop-title">Camera 1 Feed</h3>
-                        <p class="drop-desc">Upload a <strong>.mp4</strong> or <strong>.mov</strong> video from the primary camera</p>
-                        <button class="browse-btn" id="browse-btn-left">Browse Camera 1</button>
+                        <h3 class="drop-title">Camera Feed</h3>
+                        <p class="drop-desc">Upload a <strong>.mp4</strong> or <strong>.mov</strong> video from the camera</p>
+                        <button class="browse-btn" id="browse-btn-camera">Browse Camera</button>
                     </div>
-                    <div class="drop-content hidden" id="drop-content-success-left">
+                    <div class="drop-content hidden" id="drop-content-success-camera">
                         <svg class="upload-icon" style="color: var(--primary);" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
                             <path d="M22 11.08V12a10 10 0 1 1-5.93-9.14"></path>
                             <polyline points="22 4 12 14.01 9 11.01"></polyline>
                         </svg>
-                        <h3 class="drop-title" id="uploaded-filename-left" style="max-width: 100%; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; padding: 0 10px;">filename.mp4</h3>
-                        <button class="browse-btn" id="change-file-btn-left" style="margin-top: 1rem;">Change Camera 1 File</button>
+                        <h3 class="drop-title" id="uploaded-filename-camera" style="max-width: 100%; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; padding: 0 10px;">filename.mp4</h3>
+                        <button class="browse-btn" id="change-file-btn-camera" style="margin-top: 1rem;">Change Camera File</button>
                     </div>
                 </div>
 
-                <!-- Right Camera Drop Zone -->
-                <div id="drop-zone-right-container" style="flex: 1;">
-                <div id="drop-zone-right" class="drop-zone">
-                    <input type="file" id="file-input-right" class="file-input" accept=".mp4,.mov" hidden>
-                    <div class="drop-content" id="drop-content-default-right">
-                        <svg class="upload-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-                            <rect x="2" y="2" width="20" height="20" rx="2.18" ry="2.18"></rect>
-                            <line x1="7" y1="2" x2="7" y2="22"></line>
-                            <line x1="17" y1="2" x2="17" y2="22"></line>
-                            <line x1="2" y1="12" x2="22" y2="12"></line>
-                            <line x1="2" y1="7" x2="7" y2="7"></line>
-                            <line x1="2" y1="17" x2="7" y2="17"></line>
-                            <line x1="17" y1="17" x2="22" y2="17"></line>
-                            <line x1="17" y1="7" x2="22" y2="7"></line>
-                        </svg>
-                        <h3 class="drop-title">Camera 2 Feed</h3>
-                        <p class="drop-desc">Upload a <strong>.mp4</strong> or <strong>.mov</strong> video from the secondary camera</p>
-                        <button class="browse-btn" id="browse-btn-right">Browse Camera 2</button>
-                    </div>
-                    <div class="drop-content hidden" id="drop-content-success-right">
-                        <svg class="upload-icon" style="color: var(--secondary);" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-                            <path d="M22 11.08V12a10 10 0 1 1-5.93-9.14"></path>
-                            <polyline points="22 4 12 14.01 9 11.01"></polyline>
-                        </svg>
-                        <h3 class="drop-title" id="uploaded-filename-right" style="max-width: 100%; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; padding: 0 10px;">filename.mp4</h3>
-                        <button class="browse-btn" id="change-file-btn-right" style="margin-top: 1rem;">Change Camera 2 File</button>
-                    </div>
-                </div>
+                
                 </div>
             </div>
             
@@ -122,8 +86,12 @@
                 <button id="run-analysis-btn" class="browse-btn" style="padding: 1rem 3rem; font-size: 1.1rem; background-color: var(--primary); color: white; display: none;">Run AV Analysis</button>
             </div>
             <div id="loading-overlay" class="loading-overlay hidden">
-                <div class="spinner"></div>
-                <p>Processing Video Streams (This may take a while)...</p>
+                <div class="spinner" style="margin-bottom: 1rem;"></div>
+                <div class="progress-container" style="width: 80%; max-width: 400px; height: 10px; background: rgba(255,255,255,0.1); border-radius: 5px; overflow: hidden; margin: 0 auto 1rem;">
+                    <div id="progress-fill" style="width: 0%; height: 100%; background: var(--primary); transition: width 0.3s ease;"></div>
+                </div>
+                <p id="upload-status-msg" style="font-weight: 500;">Initializing upload...</p>
+                <p id="progress-text" style="color: var(--text-secondary); font-size: 0.9rem; margin-top: 0.5rem;">0%</p>
             </div>
         </section>
 
@@ -134,6 +102,7 @@
                 <h3 class="card-title">3D Skeletal Reconstruction</h3>
                 <div id="viewer-container" style="flex: 1; border-radius: 8px; overflow: hidden; margin-top: 1rem; position: relative; background: #000;">
                     <!-- Three.js Canvas injected here -->
+                    <button id="reset-view-btn" style="position: absolute; top: 10px; right: 10px; z-index: 10; padding: 0.4rem 0.8rem; background: rgba(255,255,255,0.1); border: 1px solid rgba(255,255,255,0.2); color: white; border-radius: 4px; cursor: pointer; backdrop-filter: blur(4px); font-family: inherit; font-size: 0.9rem; transition: background 0.2s;">Reset View</button>
                 </div>
                 <!-- Playback Controls -->
                 <div class="playback-controls" style="display: flex; align-items: center; gap: 1rem; margin-top: 1rem;">

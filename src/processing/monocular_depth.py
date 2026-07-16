@@ -57,7 +57,7 @@ Limitations vs. stereo triangulation
 """
 
 import logging
-from typing import Dict, List, Optional, Tuple
+from typing import Dict, List, Optional, Tuple, Callable
 
 import cv2
 import numpy as np
@@ -319,6 +319,8 @@ def estimate_monocular_pose_and_depth(
     device: str = "cpu",
     max_frames: Optional[int] = None,
     bone_lengths: Optional[Dict[Tuple[int, int], float]] = None,
+    progress_callback: Optional[Callable[[float, str], None]] = None,
+    estimator=None,
 ):
     """
     Convenience end-to-end helper: run 2D pose estimation on a single video,
@@ -330,8 +332,11 @@ def estimate_monocular_pose_and_depth(
     """
     from src.processing.pose_estimation import PoseEstimator
 
-    estimator = PoseEstimator(device=device)
-    pose_result = estimator.estimate_from_video(video_path, max_frames=max_frames)
+    if estimator is None:
+        estimator = PoseEstimator(device=device)
+    pose_result = estimator.estimate_from_video(
+        video_path, max_frames=max_frames, progress_callback=progress_callback
+    )
 
     poses_3d, valid_mask = estimate_depth_monocular(
         pose_result.keypoints, K, dist,

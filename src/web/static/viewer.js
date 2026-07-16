@@ -89,6 +89,15 @@ function initViewer() {
         updateSkeleton();
         render();
     });
+
+    // Reset View Button
+    document.getElementById('reset-view-btn')?.addEventListener('click', () => {
+        camera.position.set(2, 2, 3);
+        controls.target.set(0, 0, 0);
+        camera.lookAt(0, 0, 0);
+        controls.update();
+        render();
+    });
 }
 
 function loadPlaybackData(dataPoses, dataValidMask) {

@@ -6,41 +6,6 @@ document.addEventListener('DOMContentLoaded', () => {
     const taskSelect = document.getElementById('task-select');
 
     let fileLeft = null;
-    let fileRight = null;
-    let cameraMode = 'stereo'; // 'stereo' | 'mono'
-
-    const modeBtnStereo = document.getElementById('mode-btn-stereo');
-    const modeBtnMono = document.getElementById('mode-btn-mono');
-    const dropZoneRightContainer = document.getElementById('drop-zone-right-container');
-    const monoHint = document.getElementById('mono-hint');
-
-    function updateRunButtonVisibility() {
-        const ready = cameraMode === 'stereo' ? (fileLeft && fileRight) : !!fileLeft;
-        runAnalysisBtn.style.display = ready ? 'block' : 'none';
-    }
-
-    function setCameraMode(newMode) {
-        cameraMode = newMode;
-        const isStereo = cameraMode === 'stereo';
-
-        modeBtnStereo.classList.toggle('active-mode', isStereo);
-        modeBtnMono.classList.toggle('active-mode', !isStereo);
-        dropZoneRightContainer.classList.toggle('hidden', !isStereo);
-        monoHint.classList.toggle('hidden', isStereo);
-
-        if (isStereo) {
-            runAnalysisBtn.textContent = 'Run AV Analysis';
-        } else {
-            runAnalysisBtn.textContent = 'Run Single-Camera Analysis';
-            fileRight = null;
-        }
-        updateRunButtonVisibility();
-    }
-
-    if (modeBtnStereo && modeBtnMono) {
-        modeBtnStereo.addEventListener('click', () => setCameraMode('stereo'));
-        modeBtnMono.addEventListener('click', () => setCameraMode('mono'));
-    }
 
     function preventDefaults(e) {
         e.preventDefault();
@@ -79,9 +44,8 @@ document.addEventListener('DOMContentLoaded', () => {
         });
     }
 
-    setupDropZone('drop-zone-left', 'file-input-left', 'browse-btn-left', 'change-file-btn-left', 'drop-content-success-left', 'drop-content-default-left', 'uploaded-filename-left', false);
-    setupDropZone('drop-zone-right', 'file-input-right', 'browse-btn-right', 'change-file-btn-right', 'drop-content-success-right', 'drop-content-default-right', 'uploaded-filename-right', true);
-
+    setupDropZone('drop-zone-camera', 'file-input-camera', 'browse-btn-camera', 'change-file-btn-camera', 'drop-content-success-camera', 'drop-content-default-camera', 'uploaded-filename-camera', false);
+    
 
     function handleFileSelection(file, isRight, successId, defaultId, filenameId, zoneId) {
         const lowerName = file.name.toLowerCase();
@@ -90,26 +54,17 @@ document.addEventListener('DOMContentLoaded', () => {
             return;
         }
 
-        if (isRight) {
-            fileRight = file;
-            document.getElementById(zoneId).classList.add('has-file-b');
-        } else {
-            fileLeft = file;
-            document.getElementById(zoneId).classList.add('has-file');
-        }
+        fileLeft = file;
+        document.getElementById(zoneId).classList.add('has-file');
         document.getElementById(defaultId).classList.add('hidden');
         document.getElementById(successId).classList.remove('hidden');
         document.getElementById(filenameId).textContent = file.name;
-
-        updateRunButtonVisibility();
+        
+        runAnalysisBtn.style.display = 'block';
     }
 
     runAnalysisBtn.addEventListener('click', async () => {
-        if (cameraMode === 'stereo' && (!fileLeft || !fileRight)) {
-            alert("Please upload both Camera 1 and Camera 2 feeds.");
-            return;
-        }
-        if (cameraMode === 'mono' && !fileLeft) {
+        if (!fileLeft) {
             alert("Please upload a camera feed.");
             return;
         }
@@ -119,20 +74,12 @@ document.addEventListener('DOMContentLoaded', () => {
 
         try {
             const formData = new FormData();
-            let endpoint;
-            if (cameraMode === 'stereo') {
-                formData.append('left_camera', fileLeft);
-                formData.append('right_camera', fileRight);
-                endpoint = '/api/upload_av';
-            } else {
-                formData.append('camera', fileLeft);
-                endpoint = '/api/upload_mono';
-            }
+            formData.append('camera', fileLeft);
             if (taskSelect) {
                 formData.append('task', taskSelect.value);
             }
 
-            const response = await fetch(endpoint, {
+            const response = await fetch('/api/upload_av', {
                 method: 'POST',
                 body: formData
             });
@@ -140,23 +87,55 @@ document.addEventListener('DOMContentLoaded', () => {
             if (!response.ok) throw new Error('Network response was not ok');
             const data = await response.json();
             
-            if (data.status !== 'success') {
-                throw new Error(data.message || 'Upload failed');
+            if (!data.job_id) {
+                throw new Error('No job ID returned from server');
             }
+
+            // Start polling
+            const jobId = data.job_id;
+            const progressFill = document.getElementById('progress-fill');
+            const progressText = document.getElementById('progress-text');
+            const statusMsg = document.getElementById('upload-status-msg');
+
+            let jobResult = null;
+            while (true) {
+                await new Promise(r => setTimeout(r, 500));
+                const statusRes = await fetch(`/api/job_status/${jobId}`);
+                if (!statusRes.ok) throw new Error('Failed to fetch job status');
+                
+                const statusData = await statusRes.json();
+                
+                if (progressFill && progressText && statusMsg) {
+                    const pct = Math.round(statusData.progress * 100);
+                    progressFill.style.width = `${pct}%`;
+                    progressText.textContent = `${pct}%`;
+                    statusMsg.textContent = statusData.message || 'Processing...';
+                }
+
+                if (statusData.status === 'success') {
+                    jobResult = statusData.result;
+                    break;
+                } else if (statusData.status === 'error') {
+                    throw new Error(statusData.error || 'Job failed on server');
+                }
+            }
+            
+            if (!jobResult) throw new Error('No result returned');
+            const resultData = jobResult;
 
             // Update Classification Tier
             const tierBadge = document.getElementById('tier-badge');
             const finalScore = document.getElementById('final-score');
             
-            if (data.classification && tierBadge && finalScore) {
-                tierBadge.textContent = data.classification.tier;
-                finalScore.textContent = parseFloat(data.classification.score).toFixed(2);
+            if (resultData.classification && tierBadge && finalScore) {
+                tierBadge.textContent = resultData.classification.tier;
+                finalScore.textContent = parseFloat(resultData.classification.score).toFixed(2);
                 
                 // Colorize badge based on tier
-                if (data.classification.tier === 'Superhuman/Industrial') {
+                if (resultData.classification.tier === 'Superhuman/Industrial') {
                     tierBadge.style.background = 'linear-gradient(135deg, #f59e0b, #ef4444)';
                     tierBadge.style.webkitBackgroundClip = 'text';
-                } else if (data.classification.tier === 'Research') {
+                } else if (resultData.classification.tier === 'Research') {
                     tierBadge.style.background = 'linear-gradient(135deg, #3b82f6, #8b5cf6)';
                     tierBadge.style.webkitBackgroundClip = 'text';
                 } else {
@@ -166,18 +145,18 @@ document.addEventListener('DOMContentLoaded', () => {
             }
 
             // Update Metrics Grid
-            if (data.metrics) {
+            if (resultData.metrics) {
                 const metricMap = {
-                    'metric-ldlj': data.metrics.smoothness_ldlj,
-                    'metric-sparc': data.metrics.smoothness_sparc,
-                    'metric-symmetry': data.metrics.symmetry,
-                    'metric-periodicity': data.metrics.periodicity,
-                    'metric-rom': data.metrics.rom_utilisation,
-                    'metric-flight': data.metrics.flight_time,
-                    'metric-accel': data.metrics.peak_z_accel,
-                    'metric-jerk': data.metrics.landing_jerk,
-                    'metric-com': data.metrics.com_oscillation,
-                    'metric-transition': data.metrics.transition_time
+                    'metric-ldlj': resultData.metrics.smoothness_ldlj,
+                    'metric-sparc': resultData.metrics.smoothness_sparc,
+                    'metric-symmetry': resultData.metrics.symmetry,
+                    'metric-periodicity': resultData.metrics.periodicity,
+                    'metric-rom': resultData.metrics.rom_utilisation,
+                    'metric-flight': resultData.metrics.flight_time,
+                    'metric-accel': resultData.metrics.peak_z_accel,
+                    'metric-jerk': resultData.metrics.landing_jerk,
+                    'metric-com': resultData.metrics.com_oscillation,
+                    'metric-transition': resultData.metrics.transition_time
                 };
                 
                 for (const [id, value] of Object.entries(metricMap)) {
@@ -189,8 +168,8 @@ document.addEventListener('DOMContentLoaded', () => {
             }
             
             // Load 3D Playback Data
-            if (data.poses_3d && window.loadPlaybackData) {
-                window.loadPlaybackData(data.poses_3d, data.valid_mask);
+            if (resultData.poses_3d && window.loadPlaybackData) {
+                window.loadPlaybackData(resultData.poses_3d, resultData.valid_mask);
             }
 
             loadingOverlay.classList.add('hidden');

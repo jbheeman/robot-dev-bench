@@ -4,15 +4,17 @@ import logging
 import math
 import numpy as np
 import pandas as pd
+import torch
+import threading
+from fastapi import BackgroundTasks
+from src.processing.jobs import JobStore
+from src.processing.pose_estimation import PoseEstimator
 from fastapi import FastAPI, UploadFile, File, Form, HTTPException
 from fastapi.responses import JSONResponse
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel
 
 from src.ingestion.schema_mapper import SchemaMapper
-from src.processing.calibration import calibrate_stereo, CalibrationResult
-from src.processing.pose_estimation import estimate_stereo_poses
-from src.processing.triangulation import triangulate_pose_sequence
 from src.processing.monocular_depth import estimate_monocular_pose_and_depth
 from src.features.biomechanics import (
     compute_smoothness_3d,
@@ -42,12 +44,6 @@ STATIC_DIR = os.path.join(os.path.dirname(__file__), "static")
 if not os.path.exists(STATIC_DIR):
     os.makedirs(STATIC_DIR)
 
-# Persistent calibration storage path
-CALIBRATION_DIR = os.path.join(os.path.dirname(__file__), "..", "..", "data", "calibration")
-CALIBRATION_FILE = os.path.join(CALIBRATION_DIR, "stereo_calibration.json")
-
-# In-memory cache of the active calibration
-_active_calibration: CalibrationResult | None = None
 
 # Rough intrinsic guess used for /api/upload_mono when no stereo calibration
 # has been run yet (monocular depth only needs one camera's K/dist, but the
@@ -60,6 +56,17 @@ _DEFAULT_MONO_DIST = np.zeros(5)
 # extension, but we still validate + preserve the extension on the temp file
 # so downstream tools that DO key off the suffix behave correctly.
 ALLOWED_VIDEO_EXTENSIONS = (".mp4", ".mov")
+JOB_STORE = JobStore()
+INFERENCE_LOCK = threading.Lock()
+GLOBAL_ESTIMATOR = None
+
+def get_device() -> str:
+    if torch.cuda.is_available():
+        return "cuda"
+    elif hasattr(torch.backends, "mps") and torch.backends.mps.is_available():
+        return "mps"
+    return "cpu"
+
 
 
 def _video_suffix(filename: str) -> str:
@@ -90,245 +97,53 @@ def _sanitize_floats(value):
     return value
 
 
-def _load_cached_calibration() -> CalibrationResult | None:
-    """Load calibration from disk if it exists."""
-    global _active_calibration
-    if _active_calibration is not None:
-        return _active_calibration
-    if os.path.exists(CALIBRATION_FILE):
-        try:
-            _active_calibration = CalibrationResult.load(CALIBRATION_FILE)
-            return _active_calibration
-        except Exception as e:
-            logger.warning("Failed to load cached calibration: %s", e)
-    return None
 
 
-@app.post("/api/calibrate")
-async def calibrate_cameras(
-    left_video: UploadFile = File(...),
-    right_video: UploadFile = File(...),
-    board_cols: int = Form(10),
-    board_rows: int = Form(7),
-    square_size: float = Form(0.025),
-    marker_size: float = Form(0.015),
-):
-    """
-    Accepts two calibration videos (.mp4/.mov, checkerboard visible in both),
-    runs the full stereo calibration pipeline, persists the result,
-    and returns the calibration parameters.
-    """
-    global _active_calibration
 
-    left_suffix = _video_suffix(left_video.filename)
-    right_suffix = _video_suffix(right_video.filename)
 
-    left_tmp_path = None
-    right_tmp_path = None
 
+def _process_upload_task(job_id: str, tmp_name: str, filename: str, task: str):
     try:
-        # Save uploads to temp files
-        left_tmp = tempfile.NamedTemporaryFile(suffix=left_suffix, delete=False)
-        left_tmp.write(await left_video.read())
-        left_tmp.close()
-        left_tmp_path = left_tmp.name
+        logger.info(f"Received mono AV payload. Camera: {filename}")
+        JOB_STORE.update_job(job_id, 0.1, "Starting pose estimation...")
 
-        right_tmp = tempfile.NamedTemporaryFile(suffix=right_suffix, delete=False)
-        right_tmp.write(await right_video.read())
-        right_tmp.close()
-        right_tmp_path = right_tmp.name
+        K, dist = _DEFAULT_MONO_K, _DEFAULT_MONO_DIST
 
-        logger.info(
-            "Running stereo calibration (board=%dx%d, square=%.3fm) …",
-            board_cols, board_rows, square_size,
-        )
+        device = get_device()
+        logger.info(f"Running 2D pose estimation + monocular depth lifting on {device}...")
+        
+        def progress_cb(pct: float, msg: str):
+            # Scale 2D pose estimation to be 10% -> 90% of the job
+            overall_pct = 0.1 + (pct * 0.8)
+            JOB_STORE.update_job(job_id, overall_pct, msg)
 
-        result = calibrate_stereo(
-            left_tmp_path,
-            right_tmp_path,
-            board_size=(board_cols, board_rows),
-            square_size=square_size,
-            marker_size=marker_size,
-        )
+        global GLOBAL_ESTIMATOR
+        with INFERENCE_LOCK:
+            if GLOBAL_ESTIMATOR is None:
+                GLOBAL_ESTIMATOR = PoseEstimator(device=device)
 
-        # Persist and cache
-        os.makedirs(CALIBRATION_DIR, exist_ok=True)
-        result.save(CALIBRATION_FILE)
-        _active_calibration = result
+            pose_result, poses_3d, valid_mask = estimate_monocular_pose_and_depth(
+                tmp_name, K, dist, device=device, progress_callback=progress_cb, estimator=GLOBAL_ESTIMATOR
+            )
 
-        return JSONResponse(content={
-            "status": "success",
-            "calibration": result.to_dict(),
-        })
-
-    except ValueError as ve:
-        return JSONResponse(status_code=400, content={"status": "error", "message": str(ve)})
-    except Exception as e:
-        logger.error("Calibration failed: %s", e, exc_info=True)
-        return JSONResponse(status_code=500, content={"status": "error", "message": str(e)})
-    finally:
-        if left_tmp_path and os.path.exists(left_tmp_path):
-            os.remove(left_tmp_path)
-        if right_tmp_path and os.path.exists(right_tmp_path):
-            os.remove(right_tmp_path)
-
-
-@app.get("/api/calibration_status")
-async def calibration_status():
-    """Return the current active calibration, or null if none exists."""
-    cal = _load_cached_calibration()
-    if cal is None:
-        return JSONResponse(content={"status": "no_calibration", "calibration": None})
-    return JSONResponse(content={"status": "ok", "calibration": cal.to_dict()})
-
-
-@app.post("/api/upload_av")
-async def upload_av_files(
-    left_camera: UploadFile = File(...),
-    right_camera: UploadFile = File(...),
-    task: str = Form("general"),
-):
-    """
-    Accepts two video files (.mp4/.mov, left and right cameras),
-    validates them, and saves them to temporary storage for processing.
-    """
-    left_suffix = _video_suffix(left_camera.filename)
-    right_suffix = _video_suffix(right_camera.filename)
-
-    try:
-        # Save left camera
-        left_tmp = tempfile.NamedTemporaryFile(suffix=left_suffix, delete=False)
-        left_contents = await left_camera.read()
-        left_tmp.write(left_contents)
-        left_tmp.close()
-
-        # Save right camera
-        right_tmp = tempfile.NamedTemporaryFile(suffix=right_suffix, delete=False)
-        right_contents = await right_camera.read()
-        right_tmp.write(right_contents)
-        right_tmp.close()
-
-        logger.info(f"Received AV payload. Left: {left_camera.filename}, Right: {right_camera.filename}")
-
-        # Check that a calibration exists
-        cal = _load_cached_calibration()
-        if cal is None:
-            return JSONResponse(status_code=400, content={
-                "status": "error",
-                "message": "No stereo calibration found. Please calibrate cameras first.",
-            })
-
-        # Step 1: 2D Pose Estimation on both cameras
-        logger.info("Running 2D pose estimation on stereo pair …")
-        left_pose, right_pose = estimate_stereo_poses(
-            left_tmp.name, right_tmp.name, device="cpu",
-        )
-
-        # Step 2: Triangulate into 3D
-        logger.info("Triangulating 2D joints into 3D …")
-        poses_3d, valid_mask = triangulate_pose_sequence(
-            left_pose.keypoints,
-            right_pose.keypoints,
-            cal,
-            confidence_left=left_pose.confidence,
-            confidence_right=right_pose.confidence,
-        )
-
-        # Step 3: Biomechanics features
-        fps = left_pose.fps or 30.0
-        smoothness = compute_smoothness_3d(poses_3d, fps)
-        sparc = compute_sparc_3d(poses_3d, fps)
-        symmetry = compute_symmetry_3d(poses_3d)
-        periodicity = compute_periodicity_3d(poses_3d, fps)
-        rom = compute_rom_3d(poses_3d)
-        jumping = compute_jumping_metrics_3d(poses_3d, fps)
-        transition = compute_transition_metrics_3d(poses_3d, fps)
-
-        metrics = {
-            "smoothness_ldlj": smoothness.get("mean_ldlj", 0.0),
-            "smoothness_sparc": sparc.get("mean_sparc", 0.0),
-            "symmetry": symmetry.get("mean_symmetry_index", 0.0),
-            "periodicity": periodicity.get("regularity_score", 0.0),
-            "rom_utilisation": rom.get("mean_rom", 0.0),
-            "flight_time": jumping.get("flight_time", 0.0),
-            "peak_z_accel": jumping.get("peak_z_accel", 0.0),
-            "landing_jerk": jumping.get("landing_jerk", 0.0),
-            "com_oscillation": transition.get("com_oscillation", 0.0),
-            "transition_time": transition.get("transition_time", 0.0),
-        }
-        metrics = _sanitize_floats(metrics)
-
-        # Step 4: Rule-based classification
-        classifier = RuleBasedClassifier()
-        score, tier = classifier.classify(metrics, task)
-        score = _sanitize_floats(score)
-
-        poses_3d_clean = np.where(np.isnan(poses_3d), None, poses_3d).tolist()
-        valid_mask_clean = valid_mask.tolist()
-
-        return JSONResponse(content={
-            "task": task,
-            "status": "success",
-            "message": "Analysis complete.",
-            "metrics": metrics,
-            "poses_3d": poses_3d_clean,
-            "valid_mask": valid_mask_clean,
-            "classification": {
-                "score": score,
-                "tier": tier,
-            }
-        })
-
-    except Exception as e:
-        logger.error(f"Error processing AV upload: {e}", exc_info=True)
-        return JSONResponse(
-            status_code=500,
-            content={"status": "error", "message": str(e)},
-        )
-    finally:
-        if "left_tmp" in locals() and os.path.exists(left_tmp.name):
-            os.remove(left_tmp.name)
-        if "right_tmp" in locals() and os.path.exists(right_tmp.name):
-            os.remove(right_tmp.name)
-
-
-@app.post("/api/upload_mono")
-async def upload_mono_file(
-    camera: UploadFile = File(...),
-    task: str = Form("general"),
-):
-    """
-    Accepts a single video file (.mp4/.mov) and estimates a 3D pose sequence
-    using known G1 bone-length constraints in place of stereo triangulation
-    (see src.processing.monocular_depth). Less accurate than the two-camera
-    pipeline -- error grows outward from the hip along the kinematic chain --
-    but only needs one camera.
-    """
-    suffix = _video_suffix(camera.filename)
-
-    try:
-        tmp = tempfile.NamedTemporaryFile(suffix=suffix, delete=False)
-        tmp.write(await camera.read())
-        tmp.close()
-
-        logger.info(f"Received mono AV payload. Camera: {camera.filename}")
-
-        # Reuse an existing stereo calibration's left-camera intrinsics if
-        # available (more accurate); otherwise fall back to a rough guess.
-        cal = _load_cached_calibration()
-        if cal is not None:
-            K, dist = cal.K_left, cal.dist_left
-        else:
-            logger.warning("No calibration found; using default intrinsics for monocular depth.")
-            K, dist = _DEFAULT_MONO_K, _DEFAULT_MONO_DIST
-
-        logger.info("Running 2D pose estimation + monocular depth lifting …")
-        pose_result, poses_3d, valid_mask = estimate_monocular_pose_and_depth(
-            tmp.name, K, dist, device="cpu",
-        )
+        JOB_STORE.update_job(job_id, 0.9, "Extracting biomechanical features...")
 
         # Biomechanics features
         fps = pose_result.fps or 30.0
+
+        # Apply a temporal lowpass filter to the raw monocular 3D poses
+        # to eliminate the aggressive Z-axis jitter inherent to monocular lifting.
+        from src.features.biomechanics import _interpolate_nans
+        from src.processing.filter import TelemetryFilter
+        
+        poses_3d = _interpolate_nans(poses_3d)
+        filter = TelemetryFilter(sample_rate=fps, cutoff_freq=5.0, order=4)
+        
+        T, J, C = poses_3d.shape
+        poses_3d_flat = poses_3d.reshape(T, J * C)
+        poses_3d_smoothed = filter.filter_array(poses_3d_flat)
+        poses_3d = poses_3d_smoothed.reshape(T, J, C)
+
         smoothness = compute_smoothness_3d(poses_3d, fps)
         sparc = compute_sparc_3d(poses_3d, fps)
         symmetry = compute_symmetry_3d(poses_3d)
@@ -351,14 +166,16 @@ async def upload_mono_file(
         }
         metrics = _sanitize_floats(metrics)
 
+        JOB_STORE.update_job(job_id, 0.95, "Running classifier...")
+
         classifier = RuleBasedClassifier()
         score, tier = classifier.classify(metrics, task)
         score = _sanitize_floats(score)
 
         poses_3d_clean = np.where(np.isnan(poses_3d), None, poses_3d).tolist()
         valid_mask_clean = valid_mask.tolist()
-
-        return JSONResponse(content={
+        
+        result_payload = {
             "task": task,
             "status": "success",
             "message": "Analysis complete (monocular depth estimate).",
@@ -369,17 +186,41 @@ async def upload_mono_file(
                 "score": score,
                 "tier": tier,
             }
-        })
+        }
+        
+        JOB_STORE.finish_job(job_id, result_payload)
 
     except Exception as e:
         logger.error(f"Error processing mono upload: {e}", exc_info=True)
-        return JSONResponse(
-            status_code=500,
-            content={"status": "error", "message": str(e)},
-        )
+        JOB_STORE.fail_job(job_id, str(e))
     finally:
-        if "tmp" in locals() and os.path.exists(tmp.name):
-            os.remove(tmp.name)
+        if os.path.exists(tmp_name):
+            os.remove(tmp_name)
+
+
+@app.get("/api/job_status/{job_id}")
+async def get_job_status(job_id: str):
+    job = JOB_STORE.get_job(job_id)
+    if not job:
+        raise HTTPException(status_code=404, detail="Job not found")
+    return JSONResponse(content=job)
+
+
+@app.post("/api/upload_av")
+async def upload_av_file(
+    background_tasks: BackgroundTasks,
+    camera: UploadFile = File(...),
+    task: str = Form("general"),
+):
+    suffix = _video_suffix(camera.filename)
+    tmp = tempfile.NamedTemporaryFile(suffix=suffix, delete=False)
+    tmp.write(await camera.read())
+    tmp.close()
+
+    job_id = JOB_STORE.create_job()
+    background_tasks.add_task(_process_upload_task, job_id, tmp.name, camera.filename, task)
+
+    return JSONResponse(content={"job_id": job_id, "status": "accepted"})
 
 
 def extract_metrics_from_dataframe(df: pd.DataFrame) -> dict:

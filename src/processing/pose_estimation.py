@@ -63,7 +63,7 @@ Standard COCO body keypoints (17):
 import logging
 import os
 from dataclasses import dataclass, field
-from typing import List, Optional, Tuple
+from typing import List, Optional, Tuple, Callable
 
 import cv2
 import numpy as np
@@ -249,6 +249,7 @@ class PoseEstimator:
         video_path: str,
         max_frames: Optional[int] = None,
         skip_frames: int = 0,
+        progress_callback: Optional[Callable[[float, str], None]] = None,
     ) -> PoseResult:
         """
         Run 2D pose estimation on every frame of a video.
@@ -291,6 +292,9 @@ class PoseEstimator:
             ret, frame = cap.read()
             if not ret:
                 break
+                
+            if progress_callback:
+                progress_callback(frame_idx / max(total_frames, 1), f"Processing frame {frame_idx}/{total_frames} (2D pose)")
 
             from mmengine.registry import DefaultScope
 
@@ -364,53 +368,3 @@ class PoseEstimator:
         )
 
 
-def estimate_stereo_poses(
-    left_video_path: str,
-    right_video_path: str,
-    device: str = "cpu",
-    max_frames: Optional[int] = None,
-) -> Tuple[PoseResult, PoseResult]:
-    """
-    Convenience function to run 2D pose estimation on both cameras of a
-    stereo pair. Auto-synchronizes using audio cross-correlation.
-
-    Returns (left_result, right_result).
-    """
-    from src.processing.sync import get_video_offset
-    
-    estimator = PoseEstimator(device=device)
-
-    # Compute offset
-    cap_l = cv2.VideoCapture(left_video_path)
-    cap_r = cv2.VideoCapture(right_video_path)
-    fps_l = cap_l.get(cv2.CAP_PROP_FPS) or 30.0
-    fps_r = cap_r.get(cv2.CAP_PROP_FPS) or 30.0
-    cap_l.release()
-    cap_r.release()
-
-    offset_seconds = get_video_offset(left_video_path, right_video_path)
-    skip_l = 0
-    skip_r = 0
-    if offset_seconds > 0:
-        skip_l = int(offset_seconds * fps_l)
-    elif offset_seconds < 0:
-        skip_r = int(abs(offset_seconds) * fps_r)
-
-    logger.info("Estimating poses on LEFT camera …")
-    left_result = estimator.estimate_from_video(left_video_path, max_frames, skip_frames=skip_l)
-
-    logger.info("Estimating poses on RIGHT camera …")
-    right_result = estimator.estimate_from_video(right_video_path, max_frames, skip_frames=skip_r)
-
-    # Align the sequences to be the same length (clip the longer one from the end)
-    min_frames = min(left_result.num_frames, right_result.num_frames)
-    if left_result.num_frames > min_frames:
-        left_result.keypoints = left_result.keypoints[:min_frames]
-        left_result.confidence = left_result.confidence[:min_frames]
-        left_result.num_frames = min_frames
-    if right_result.num_frames > min_frames:
-        right_result.keypoints = right_result.keypoints[:min_frames]
-        right_result.confidence = right_result.confidence[:min_frames]
-        right_result.num_frames = min_frames
-
-    return left_result, right_result

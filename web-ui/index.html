@@ -1,0 +1,93 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>BPS Calculator | FRC Bench</title>
+    <meta name="description" content="Calculate Balls Per Second from a robot video stream.">
+    <link href="https://fonts.googleapis.com/css2?family=Outfit:wght@300;400;600;800&display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="style.css">
+</head>
+<body>
+    <div class="app-container">
+        <header>
+            <h1><span class="highlight">BPS</span> Calculator</h1>
+            <p>Upload a video to analyze the balls per second performance.</p>
+        </header>
+
+        <main>
+            <section class="upload-section glass-panel">
+                <form id="bps-form">
+                    <div class="form-group file-input-group">
+                        <label for="video-upload" class="file-label">
+                            <span class="file-icon">📁</span>
+                            <span id="file-name">Click to select video</span>
+                            <input type="file" id="video-upload" name="video" accept=".mp4,.mov,video/mp4,video/quicktime,video/x-m4v" required>
+                        </label>
+                    </div>
+                    
+                    <div class="form-group inline-group">
+                        <label for="min-area">Min Area (px):</label>
+                        <input type="number" id="min-area" name="min-area" value="500" min="50" max="5000">
+                    </div>
+
+                    <div class="form-group inline-group" style="flex-wrap: wrap;">
+                        <label for="start-time">Start Time (s):</label>
+                        <input type="number" id="start-time" name="start-time" value="0" min="0" step="0.1">
+                        <button type="button" class="btn btn-secondary btn-sm" id="btn-set-start" style="margin-top: 0; padding: 0.25rem 0.75rem;">Set to Current</button>
+                        
+                        <label for="end-time" style="margin-left: 1rem;">End Time (s):</label>
+                        <input type="number" id="end-time" name="end-time" value="-1" step="0.1" title="Use -1 to process to the end">
+                        <button type="button" class="btn btn-secondary btn-sm" id="btn-set-end" style="margin-top: 0; padding: 0.25rem 0.75rem;">Set to Current</button>
+                    </div>
+
+                    <div class="preview-container" style="display: none;" id="preview-container">
+                        <p class="instruction">Draw a box over the stream line to define the counting zone.</p>
+                        <div class="video-wrapper">
+                            <video id="video-preview" muted playsinline></video>
+                            <canvas id="roi-canvas"></canvas>
+                        </div>
+                        <div class="video-controls">
+                            <button type="button" id="play-pause-btn" class="btn btn-secondary btn-sm">▶ Play</button>
+                            <input type="range" id="video-timeline" value="0" step="0.1" min="0" max="100">
+                            <span id="video-time-display">0.0 / 0.0</span>
+                        </div>
+                        <button type="button" id="clear-roi" class="btn btn-secondary">Clear ROI</button>
+                    </div>
+
+                    <button type="submit" class="btn btn-primary" id="submit-btn" disabled>Calculate BPS</button>
+                </form>
+            </section>
+
+            <section class="results-section glass-panel" id="results-panel" style="display: none;">
+                <h2>Results</h2>
+                <div class="metrics-grid">
+                    <div class="metric-card">
+                        <div class="metric-title">Average BPS</div>
+                        <div class="metric-value" id="res-avg">0.00</div>
+                    </div>
+                    <div class="metric-card">
+                        <div class="metric-title">Peak BPS (1s)</div>
+                        <div class="metric-value" id="res-peak">0</div>
+                    </div>
+                    <div class="metric-card">
+                        <div class="metric-title">Total Count</div>
+                        <div class="metric-value" id="res-total">0</div>
+                    </div>
+                    <div class="metric-card">
+                        <div class="metric-title">Video Duration</div>
+                        <div class="metric-value"><span id="res-dur">0</span>s</div>
+                    </div>
+                </div>
+            </section>
+            
+            <div id="loading-overlay" class="loading-overlay" style="display: none;">
+                <div class="spinner"></div>
+                <p>Analyzing video...</p>
+            </div>
+        </main>
+    </div>
+
+    <script src="script.js"></script>
+</body>
+</html>

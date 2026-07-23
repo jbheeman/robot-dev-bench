@@ -804,3 +804,364 @@ body {
 .icon-btn:hover {
     background: var(--primary);
 }
+
+/* ════════════════════════════════════════════════════════════════════
+   Stereo Settings Panel
+   ════════════════════════════════════════════════════════════════════ */
+
+.stereo-settings-panel {
+    padding: 1.25rem 1.5rem;
+    margin-bottom: 1.5rem;
+}
+
+.stereo-header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+}
+
+.stereo-toggle-label {
+    display: flex;
+    align-items: center;
+    gap: 0.75rem;
+    cursor: pointer;
+    user-select: none;
+}
+
+.stereo-toggle-text {
+    font-weight: 500;
+    font-size: 1rem;
+}
+
+/* Custom toggle switch */
+.stereo-checkbox {
+    display: none;
+}
+
+.stereo-slider {
+    position: relative;
+    width: 44px;
+    height: 24px;
+    background: rgba(255, 255, 255, 0.1);
+    border-radius: 12px;
+    border: 1px solid rgba(255, 255, 255, 0.15);
+    transition: all 0.3s ease;
+    flex-shrink: 0;
+}
+
+.stereo-slider::after {
+    content: '';
+    position: absolute;
+    top: 2px;
+    left: 2px;
+    width: 18px;
+    height: 18px;
+    background: rgba(255, 255, 255, 0.5);
+    border-radius: 50%;
+    transition: all 0.3s ease;
+}
+
+.stereo-checkbox:checked + .stereo-slider {
+    background: var(--primary);
+    border-color: var(--primary);
+}
+
+.stereo-checkbox:checked + .stereo-slider::after {
+    left: 22px;
+    background: white;
+}
+
+.stereo-badge {
+    font-size: 0.7rem;
+    font-weight: 700;
+    text-transform: uppercase;
+    letter-spacing: 1.5px;
+    padding: 0.25rem 0.6rem;
+    border-radius: 6px;
+    background: rgba(255, 255, 255, 0.06);
+    color: var(--text-secondary);
+    border: 1px solid rgba(255, 255, 255, 0.08);
+    transition: all 0.3s ease;
+}
+
+.stereo-badge-on {
+    background: rgba(83, 165, 167, 0.2);
+    color: var(--primary);
+    border-color: rgba(83, 165, 167, 0.3);
+}
+
+.stereo-fields {
+    display: flex;
+    gap: 1.5rem;
+    margin-top: 1.25rem;
+    padding-top: 1rem;
+    border-top: 1px solid rgba(255, 255, 255, 0.06);
+    animation: slideDown 0.25s ease-out;
+}
+
+@keyframes slideDown {
+    from {
+        opacity: 0;
+        transform: translateY(-8px);
+    }
+    to {
+        opacity: 1;
+        transform: translateY(0);
+    }
+}
+
+.stereo-field {
+    display: flex;
+    flex-direction: column;
+    gap: 0.35rem;
+    flex: 1;
+}
+
+.stereo-field-label {
+    font-size: 0.85rem;
+    font-weight: 500;
+    color: var(--text-secondary);
+}
+
+.stereo-input {
+    background: rgba(0, 0, 0, 0.3);
+    border: 1px solid rgba(255, 255, 255, 0.1);
+    border-radius: 8px;
+    padding: 0.5rem 0.75rem;
+    color: var(--text-primary);
+    font-family: 'Outfit', monospace;
+    font-size: 1rem;
+    font-weight: 500;
+    outline: none;
+    transition: border-color 0.2s ease;
+    -moz-appearance: textfield;
+}
+
+.stereo-input::-webkit-inner-spin-button,
+.stereo-input::-webkit-outer-spin-button {
+    -webkit-appearance: none;
+    margin: 0;
+}
+
+.stereo-input:focus {
+    border-color: var(--primary);
+}
+
+.stereo-field-hint {
+    font-size: 0.7rem;
+    color: rgba(148, 163, 184, 0.6);
+}
+
+/* ════════════════════════════════════════════════════════════════════
+   Input Mode Tabs
+   ════════════════════════════════════════════════════════════════════ */
+
+.input-mode-tabs {
+    display: flex;
+    gap: 0.5rem;
+    margin-bottom: 1.5rem;
+}
+
+.mode-tab {
+    flex: 1;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 0.6rem;
+    padding: 0.8rem 1.2rem;
+    border-radius: 12px;
+    border: 1px solid rgba(255, 255, 255, 0.08);
+    background: rgba(255, 255, 255, 0.03);
+    color: var(--text-secondary);
+    font-family: inherit;
+    font-size: 0.95rem;
+    font-weight: 500;
+    cursor: pointer;
+    transition: all 0.25s ease;
+}
+
+.mode-tab:hover {
+    background: rgba(255, 255, 255, 0.06);
+    border-color: rgba(255, 255, 255, 0.15);
+}
+
+.mode-tab.active-tab {
+    background: rgba(83, 165, 167, 0.12);
+    border-color: rgba(83, 165, 167, 0.4);
+    color: var(--primary);
+}
+
+.input-mode-content {
+    transition: opacity 0.2s ease;
+}
+
+/* ════════════════════════════════════════════════════════════════════
+   Video Recording UI
+   ════════════════════════════════════════════════════════════════════ */
+
+.record-container {
+    padding: 1.5rem;
+    display: flex;
+    flex-direction: column;
+    gap: 1rem;
+}
+
+.record-preview-wrapper {
+    position: relative;
+    width: 100%;
+    aspect-ratio: 16 / 9;
+    border-radius: 12px;
+    overflow: hidden;
+    background: #0a0a0e;
+}
+
+.camera-preview {
+    width: 100%;
+    height: 100%;
+    object-fit: contain;
+    display: block;
+}
+
+.no-camera-msg {
+    position: absolute;
+    top: 0;
+    left: 0;
+    width: 100%;
+    height: 100%;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    gap: 1rem;
+    color: var(--text-secondary);
+    font-size: 0.95rem;
+}
+
+.record-overlay {
+    position: absolute;
+    top: 12px;
+    left: 12px;
+    display: flex;
+    align-items: center;
+    gap: 0.6rem;
+    padding: 0.4rem 0.8rem;
+    background: rgba(0, 0, 0, 0.6);
+    backdrop-filter: blur(8px);
+    border-radius: 8px;
+    z-index: 2;
+}
+
+.record-pulse {
+    width: 12px;
+    height: 12px;
+    border-radius: 50%;
+    background: #ef4444;
+    opacity: 0.6;
+}
+
+.record-pulse.pulse-active {
+    animation: rec-pulse 1s ease-in-out infinite;
+}
+
+@keyframes rec-pulse {
+    0%, 100% { opacity: 0.5; transform: scale(0.9); }
+    50% { opacity: 1; transform: scale(1.15); }
+}
+
+.record-timer {
+    font-family: 'Outfit', monospace;
+    font-weight: 600;
+    font-size: 0.9rem;
+    color: #ef4444;
+}
+
+.record-controls {
+    display: flex;
+    gap: 0.75rem;
+    justify-content: center;
+}
+
+.record-btn {
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+    padding: 0.65rem 1.5rem;
+    border-radius: 30px;
+    border: none;
+    font-family: inherit;
+    font-weight: 600;
+    font-size: 0.9rem;
+    cursor: pointer;
+    transition: all 0.25s ease;
+    background: rgba(255, 255, 255, 0.08);
+    color: var(--text-primary);
+    border: 1px solid rgba(255, 255, 255, 0.12);
+}
+
+.record-btn:hover {
+    background: rgba(255, 255, 255, 0.14);
+    transform: translateY(-1px);
+}
+
+.record-start-btn {
+    background: rgba(239, 68, 68, 0.15);
+    border-color: rgba(239, 68, 68, 0.4);
+    color: #f87171;
+}
+
+.record-start-btn:hover {
+    background: rgba(239, 68, 68, 0.25);
+}
+
+.rec-dot {
+    width: 10px;
+    height: 10px;
+    border-radius: 50%;
+    background: #ef4444;
+    display: inline-block;
+}
+
+.record-stop-btn {
+    background: rgba(239, 68, 68, 0.2);
+    border-color: rgba(239, 68, 68, 0.5);
+    color: #fca5a5;
+}
+
+.record-stop-btn:hover {
+    background: rgba(239, 68, 68, 0.35);
+}
+
+.record-status {
+    display: flex;
+    align-items: center;
+    gap: 0.75rem;
+    padding: 0.75rem 1rem;
+    background: rgba(16, 185, 129, 0.08);
+    border: 1px solid rgba(16, 185, 129, 0.2);
+    border-radius: 12px;
+    font-size: 0.9rem;
+    color: var(--success);
+    font-weight: 500;
+}
+
+/* ════════════════════════════════════════════════════════════════════
+   Pipeline Badge (Monocular / Stereo-Fused)
+   ════════════════════════════════════════════════════════════════════ */
+
+.pipeline-badge {
+    font-size: 0.7rem;
+    font-weight: 700;
+    text-transform: uppercase;
+    letter-spacing: 1.5px;
+    padding: 0.3rem 0.8rem;
+    border-radius: 6px;
+    background: rgba(148, 163, 184, 0.12);
+    color: var(--text-secondary);
+    border: 1px solid rgba(148, 163, 184, 0.2);
+}
+
+.pipeline-badge-stereo {
+    background: rgba(83, 165, 167, 0.15);
+    color: var(--primary);
+    border-color: rgba(83, 165, 167, 0.35);
+}

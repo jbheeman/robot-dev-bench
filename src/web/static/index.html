@@ -45,41 +45,132 @@
                     <option value="jumping">Jumping</option>
                     <option value="transitions">Transitions</option>
                 </select>
+
+                <label for="morphology-select" class="task-label" style="margin-left: 20px;">Morphology:</label>
+                <select id="morphology-select" class="task-select">
+                    <option value="g1">Unitree G1</option>
+                    <option value="g1_retrained">Unitree G1 (Retrained Lifter)</option>
+                    <option value="human">General</option>
+                </select>
             </div>
 
-            
-
-            <div style="display: flex; gap: 2rem; width: 100%;">
-                <!-- Left Camera Drop Zone -->
-                <div id="drop-zone-camera" class="drop-zone" style="flex: 1;">
-                    <input type="file" id="file-input-camera" class="file-input" accept=".mp4,.mov" hidden>
-                    <div class="drop-content" id="drop-content-default-camera">
-                        <svg class="upload-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-                            <rect x="2" y="2" width="20" height="20" rx="2.18" ry="2.18"></rect>
-                            <line x1="7" y1="2" x2="7" y2="22"></line>
-                            <line x1="17" y1="2" x2="17" y2="22"></line>
-                            <line x1="2" y1="12" x2="22" y2="12"></line>
-                            <line x1="2" y1="7" x2="7" y2="7"></line>
-                            <line x1="2" y1="17" x2="7" y2="17"></line>
-                            <line x1="17" y1="17" x2="22" y2="17"></line>
-                            <line x1="17" y1="7" x2="22" y2="7"></line>
-                        </svg>
-                        <h3 class="drop-title">Camera Feed</h3>
-                        <p class="drop-desc">Upload a <strong>.mp4</strong> or <strong>.mov</strong> video from the camera</p>
-                        <button class="browse-btn" id="browse-btn-camera">Browse Camera</button>
+            <!-- Stereo Camera Settings Panel -->
+            <div class="stereo-settings-panel glass-card" id="stereo-settings-panel">
+                <div class="stereo-header" id="stereo-toggle-header">
+                    <label class="stereo-toggle-label">
+                        <input type="checkbox" id="stereo-toggle" class="stereo-checkbox">
+                        <span class="stereo-slider"></span>
+                        <span class="stereo-toggle-text">Stereo Camera (Side-by-Side)</span>
+                    </label>
+                    <span class="stereo-badge" id="stereo-badge">OFF</span>
+                </div>
+                <div class="stereo-fields hidden" id="stereo-fields">
+                    <div class="stereo-field">
+                        <label for="stereo-baseline" class="stereo-field-label">Baseline (mm)</label>
+                        <input type="number" id="stereo-baseline" class="stereo-input" value="60" min="1" max="500" step="0.1">
+                        <span class="stereo-field-hint">Distance between camera lenses</span>
                     </div>
-                    <div class="drop-content hidden" id="drop-content-success-camera">
-                        <svg class="upload-icon" style="color: var(--primary);" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                    <div class="stereo-field">
+                        <label for="stereo-focal-length" class="stereo-field-label">Focal Length (px)</label>
+                        <input type="number" id="stereo-focal-length" class="stereo-input" value="800" min="100" max="5000" step="1">
+                        <span class="stereo-field-hint">Camera focal length in pixels</span>
+                    </div>
+                    <div class="stereo-field" style="flex-direction: row; align-items: center; justify-content: space-between;">
+                        <div>
+                            <label for="stereo-swap" class="stereo-field-label">Swap L/R</label>
+                            <span class="stereo-field-hint" style="display: block;">Fixes cross-eyed camera feeds</span>
+                        </div>
+                        <input type="checkbox" id="stereo-swap" class="stereo-input" style="width: 24px; height: 24px; cursor: pointer;">
+                    </div>
+                </div>
+            </div>
+
+            <!-- Input Mode Tabs -->
+            <div class="input-mode-tabs">
+                <button class="mode-tab active-tab" id="tab-upload" data-mode="upload">
+                    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="17 8 12 3 7 8"/><line x1="12" y1="3" x2="12" y2="15"/></svg>
+                    Upload Video
+                </button>
+                <button class="mode-tab" id="tab-record" data-mode="record">
+                    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><circle cx="12" cy="12" r="4" fill="currentColor"/></svg>
+                    Record Video
+                </button>
+            </div>
+
+            <!-- Upload Mode -->
+            <div id="mode-upload" class="input-mode-content">
+                <div style="display: flex; gap: 2rem; width: 100%;">
+                    <!-- Camera Drop Zone -->
+                    <div id="drop-zone-camera" class="drop-zone" style="flex: 1;">
+                        <input type="file" id="file-input-camera" class="file-input" accept=".mp4,.mov,.webm" hidden>
+                        <div class="drop-content" id="drop-content-default-camera">
+                            <svg class="upload-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                                <rect x="2" y="2" width="20" height="20" rx="2.18" ry="2.18"></rect>
+                                <line x1="7" y1="2" x2="7" y2="22"></line>
+                                <line x1="17" y1="2" x2="17" y2="22"></line>
+                                <line x1="2" y1="12" x2="22" y2="12"></line>
+                                <line x1="2" y1="7" x2="7" y2="7"></line>
+                                <line x1="2" y1="17" x2="7" y2="17"></line>
+                                <line x1="17" y1="17" x2="22" y2="17"></line>
+                                <line x1="17" y1="7" x2="22" y2="7"></line>
+                            </svg>
+                            <h3 class="drop-title">Camera Feed</h3>
+                            <p class="drop-desc">Upload a <strong>.mp4</strong>, <strong>.mov</strong>, or <strong>.webm</strong> video from the camera</p>
+                            <button class="browse-btn" id="browse-btn-camera">Browse Camera</button>
+                        </div>
+                        <div class="drop-content hidden" id="drop-content-success-camera">
+                            <svg class="upload-icon" style="color: var(--primary);" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                                <path d="M22 11.08V12a10 10 0 1 1-5.93-9.14"></path>
+                                <polyline points="22 4 12 14.01 9 11.01"></polyline>
+                            </svg>
+                            <h3 class="drop-title" id="uploaded-filename-camera" style="max-width: 100%; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; padding: 0 10px;">filename.mp4</h3>
+                            <button class="browse-btn" id="change-file-btn-camera" style="margin-top: 1rem;">Change Camera File</button>
+                        </div>
+                    </div>
+
+                </div>
+            </div>
+
+            <!-- Record Mode -->
+            <div id="mode-record" class="input-mode-content hidden">
+                <div class="record-container glass-card">
+                    <div class="record-preview-wrapper">
+                        <video id="camera-preview" autoplay playsinline muted class="camera-preview"></video>
+                        <div class="record-overlay" id="record-overlay">
+                            <div class="record-pulse" id="record-pulse"></div>
+                            <span class="record-timer" id="record-timer">00:00</span>
+                        </div>
+                        <div class="no-camera-msg" id="no-camera-msg">
+                            <svg width="48" height="48" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" style="opacity: 0.4;">
+                                <path d="M23 7l-7 5 7 5V7z"/><rect x="1" y="5" width="15" height="14" rx="2" ry="2"/>
+                            </svg>
+                            <p>Click <strong>Start Camera</strong> to begin</p>
+                        </div>
+                    </div>
+                    <div class="record-controls">
+                        <button class="record-btn" id="start-camera-btn">
+                            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M23 7l-7 5 7 5V7z"/><rect x="1" y="5" width="15" height="14" rx="2" ry="2"/></svg>
+                            Start Camera
+                        </button>
+                        <button class="record-btn record-start-btn hidden" id="start-record-btn">
+                            <span class="rec-dot"></span>
+                            Start Recording
+                        </button>
+                        <button class="record-btn record-stop-btn hidden" id="stop-record-btn">
+                            <svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor"><rect x="4" y="4" width="16" height="16" rx="2"/></svg>
+                            Stop Recording
+                        </button>
+                    </div>
+                    <div class="record-status hidden" id="record-status">
+                        <svg class="upload-icon" style="color: var(--primary); width: 32px; height: 32px;" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
                             <path d="M22 11.08V12a10 10 0 1 1-5.93-9.14"></path>
                             <polyline points="22 4 12 14.01 9 11.01"></polyline>
                         </svg>
-                        <h3 class="drop-title" id="uploaded-filename-camera" style="max-width: 100%; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; padding: 0 10px;">filename.mp4</h3>
-                        <button class="browse-btn" id="change-file-btn-camera" style="margin-top: 1rem;">Change Camera File</button>
+                        <span id="record-status-text">Recording captured!</span>
+                        <button class="browse-btn" id="discard-record-btn" style="margin-top: 0.5rem; padding: 0.4rem 1rem; font-size: 0.85rem; background: rgba(239, 68, 68, 0.3); box-shadow: none;">Discard</button>
                     </div>
                 </div>
-
-                
-                </div>
+            </div>
             </div>
             
             <div style="display: flex; justify-content: center; margin-top: 2rem;">
@@ -99,7 +190,10 @@
         <section id="results-section" class="results-section hidden">
             <!-- 3D Visualization -->
             <div class="glass-card full-span" style="display: flex; flex-direction: column; height: 500px;">
-                <h3 class="card-title">3D Skeletal Reconstruction</h3>
+                <div style="display: flex; justify-content: space-between; align-items: center;">
+                    <h3 class="card-title">3D Skeletal Reconstruction</h3>
+                    <span class="pipeline-badge" id="pipeline-badge">Monocular</span>
+                </div>
                 <div id="viewer-container" style="flex: 1; border-radius: 8px; overflow: hidden; margin-top: 1rem; position: relative; background: #000;">
                     <!-- Three.js Canvas injected here -->
                     <button id="reset-view-btn" style="position: absolute; top: 10px; right: 10px; z-index: 10; padding: 0.4rem 0.8rem; background: rgba(255,255,255,0.1); border: 1px solid rgba(255,255,255,0.2); color: white; border-radius: 4px; cursor: pointer; backdrop-filter: blur(4px); font-family: inherit; font-size: 0.9rem; transition: background 0.2s;">Reset View</button>
@@ -121,11 +215,36 @@
                 </div>
             </div>
 
+            <!-- Walk Grade Badge -->
+            <div class="glass-card classification-card">
+                <h3 class="card-title">Walk Cycle Grade</h3>
+                <div class="classification-content" style="display: flex; flex-direction: column; align-items: center; justify-content: center; height: 100%; text-align: center;">
+                    <div id="walk-tier-badge" class="tier-badge" style="font-size: 2rem; font-weight: 700; margin-bottom: 0.5rem; background: linear-gradient(135deg, #10b981, #3b82f6); -webkit-background-clip: text; -webkit-text-fill-color: transparent;">--</div>
+                    <div style="font-size: 1.2rem; color: var(--text-secondary);">Score: <span id="walk-final-score" style="color: var(--text); font-weight: 600;">--</span> / 100</div>
+                </div>
+            </div>
+
             <!-- Biomechanics Metrics Grid -->
             <div class="glass-card metrics-card" style="grid-column: span 2;">
                 <h3 class="card-title">Biomechanical Analysis</h3>
                 <div class="metrics-grid" style="display: grid; grid-template-columns: repeat(auto-fit, minmax(180px, 1fr)); gap: 1.5rem; margin-top: 1.5rem;">
                     
+                    <div class="metric-item">
+                        <span class="metric-label">Avg Foot Clearance (cm)</span>
+                        <div id="metric-clearance" class="metric-value">--</div>
+                    </div>
+                    <div class="metric-item">
+                        <span class="metric-label">Stride Length (m)</span>
+                        <div id="metric-stride" class="metric-value">--</div>
+                    </div>
+                    <div class="metric-item">
+                        <span class="metric-label">Walking Speed (m/s)</span>
+                        <div id="metric-speed" class="metric-value">--</div>
+                    </div>
+                    <div class="metric-item">
+                        <span class="metric-label">Torso Oscillation (cm)</span>
+                        <div id="metric-oscillation" class="metric-value">--</div>
+                    </div>
                     <div class="metric-item">
                         <span class="metric-label">Smoothness (LDLJ)</span>
                         <div id="metric-ldlj" class="metric-value">--</div>

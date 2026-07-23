@@ -10,10 +10,14 @@ let jointMeshes = [];
 let boneLines = [];
 
 const COCO_KEYPOINTS = 17;
+// Skeleton connections — only between joints that both exist.
+// Removed connections through eyes/ears (joints 1-4) since H36M doesn't have them.
+// Instead, connect nose directly to shoulders.
 const COCO_SKELETON = [
-    [15, 13], [13, 11], [16, 14], [14, 12], [11, 12],
-    [5, 11], [6, 12], [5, 6], [5, 7], [7, 9], [6, 8], [8, 10],
-    [1, 2], [0, 1], [0, 2], [1, 3], [2, 4], [3, 5], [4, 6]
+    [15, 13], [13, 11], [16, 14], [14, 12], [11, 12],   // legs + hip bar
+    [5, 11], [6, 12], [5, 6],                              // torso
+    [5, 7], [7, 9], [6, 8], [8, 10],                       // arms
+    [0, 5], [0, 6],                                         // nose → shoulders (skip missing eyes/ears)
 ];
 
 // Initialize Three.js scene
@@ -114,15 +118,15 @@ function loadPlaybackData(dataPoses, dataValidMask) {
     
     updateSkeleton();
     
-    // Center camera on the median point of the first valid frame
+    // Center camera on the centroid of the first valid frame
     if (poses3D && poses3D.length > 0) {
         let firstFrame = poses3D[0];
         let sum = new THREE.Vector3();
         let count = 0;
-        for (let i=0; i<COCO_KEYPOINTS; i++) {
+        for (let i = 0; i < COCO_KEYPOINTS; i++) {
             if (firstFrame[i] && firstFrame[i][0] !== null) {
                 sum.x += firstFrame[i][0];
-                sum.y += firstFrame[i][1]; // Assuming Y is up
+                sum.y += firstFrame[i][1];
                 sum.z += firstFrame[i][2];
                 count++;
             }
@@ -144,7 +148,7 @@ function updateSkeleton() {
     const frame = Math.min(currentFrame, poses3D.length - 1);
     const joints = poses3D[frame];
     
-    // Update joint positions
+    // Update joint positions — coordinates are already in ThreeJS space (X=right, Y=up, Z=towards-camera)
     for (let i = 0; i < COCO_KEYPOINTS; i++) {
         if (joints[i] && joints[i][0] !== null) {
             jointMeshes[i].position.set(joints[i][0], joints[i][1], joints[i][2]);

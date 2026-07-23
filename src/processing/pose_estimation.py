@@ -68,6 +68,42 @@ from typing import List, Optional, Tuple, Callable
 import cv2
 import numpy as np
 
+from . import stereo_core as sc
+from .lifter import Lifter
+
+G1_BONE_LENGTHS = {
+    1: (0, 0.1212), 2: (1, 0.3409), 3: (2, 0.3000), # left leg
+    4: (0, 0.1212), 5: (4, 0.3409), 6: (5, 0.3000), # right leg
+    7: (0, 0.1459), 8: (7, 0.1459), 9: (8, 0.1459), 10: (9, 0.1459), # spine -> head
+    11: (8, 0.1002), 12: (11, 0.1929), 13: (12, 0.1929), # left arm
+    14: (8, 0.1002), 15: (14, 0.1929), 16: (15, 0.1929), # right arm
+}
+
+def apply_g1_morphology(pose: np.ndarray) -> np.ndarray:
+    """
+    Given a (17, 3) pose, rescale the bones to match Unitree G1 proportions
+    while preserving the joint angles predicted by the model.
+    """
+    new_pose = pose.copy()
+    
+    # Traverse kinematic tree from root (0) to leaves (1..16 are topologically sorted)
+    for child in range(1, 17):
+        parent, length = G1_BONE_LENGTHS[child]
+        
+        # Calculate direction vector from ORIGINAL pose
+        original_vec = pose[child] - pose[parent]
+        norm = np.linalg.norm(original_vec)
+        
+        if norm > 1e-6:
+            scaled_vec = original_vec / norm * length
+        else:
+            scaled_vec = np.zeros(3)
+            
+        # Attach the scaled vector to the NEW parent position
+        new_pose[child] = new_pose[parent] + scaled_vec
+        
+    return new_pose
+
 logger = logging.getLogger(__name__)
 
 # Number of COCO body keypoints (the standard 17 used for body pose)
@@ -91,15 +127,24 @@ COCO_SKELETON = [
 
 
 @dataclass
+class StereoConfig:
+    """Configuration for stereo camera triangulation."""
+    baseline_mm: float = 60.0       # Distance between cameras in mm
+    focal_length_px: float = 800.0  # Focal length in pixels
+
+
+@dataclass
 class PoseResult:
     """Result of pose estimation on a single video."""
     keypoints: np.ndarray       # (T, J, 2) — 2D coordinates per frame
     confidence: np.ndarray      # (T, J) — confidence scores
+    poses_3d: Optional[np.ndarray] = None # (T, J, 3) — 3D coordinates per frame
     num_frames: int = 0
     num_joints: int = COCO_BODY_KEYPOINTS
     fps: float = 0.0
     frame_width: int = 0
     frame_height: int = 0
+    stereo_used: bool = False  # Whether stereo triangulation was applied
 
 
 def _try_import_mmpose():
@@ -161,6 +206,7 @@ class PoseEstimator:
 
         self._detector = None
         self._pose_model = None
+        self._lifter = None
         self._initialised = False
 
     def _lazy_init(self):
@@ -199,6 +245,11 @@ class PoseEstimator:
         pose_checkpoint = self._resolve_checkpoint("mmpose", _DEFAULT_POSE_CONFIG)
         self._pose_model = init_pose(pose_config, pose_checkpoint, device=self.device)
 
+        # Initialise lifter model
+        logger.info("Loading MotionAGFormer lifter model …")
+        from .lifter import Lifter
+        self._lifter = Lifter(device=self.device)
+
         self._initialised = True
         logger.info("Pose estimation models loaded successfully.")
 
@@ -231,6 +282,14 @@ class PoseEstimator:
         For now, returns the model zoo URL — MMPose/MMDet will download it
         automatically on first use.
         """
+        # Check if a custom fine-tuned humanoid checkpoint exists
+        if model_name == _DEFAULT_POSE_CONFIG:
+            custom_ckpt = os.path.join(_MODEL_CACHE, "vitpose_humanoid.pth")
+            if os.path.exists(custom_ckpt):
+                import logging
+                logging.getLogger(__name__).info(f"Loading custom fine-tuned checkpoint: {custom_ckpt}")
+                return custom_ckpt
+
         # The checkpoint URLs for our default models
         checkpoints = {
             "rtmdet_m_8xb32-300e_coco": (
@@ -241,6 +300,7 @@ class PoseEstimator:
                 "https://download.openmmlab.com/mmpose/v1/body_2d_keypoint/topdown_heatmap/"
                 "coco/td-hm_ViTPose-small_8xb64-210e_coco-256x192-62d7a712_20230314.pth"
             ),
+
         }
         return checkpoints.get(model_name, "")
 
@@ -250,6 +310,9 @@ class PoseEstimator:
         max_frames: Optional[int] = None,
         skip_frames: int = 0,
         progress_callback: Optional[Callable[[float, str], None]] = None,
+        stereo: bool = False,
+        stereo_config: Optional[StereoConfig] = None,
+        morphology: str = "g1",
     ) -> PoseResult:
         """
         Run 2D pose estimation on every frame of a video.
@@ -263,15 +326,33 @@ class PoseEstimator:
             PoseResult with keypoints (T, J, 2) and confidence (T, J).
         """
         self._lazy_init()
+        
+        from .lifter import _HERE
+        if morphology == "g1_retrained":
+            ckpt = os.path.join(_HERE, "..", "..", "checkpoints", "motionagformer-s-g1.pth.tr")
+        else:
+            ckpt = os.path.join(_HERE, "..", "..", "checkpoints", "motionagformer-s-h36m.pth.tr")
+        self._lifter.load_checkpoint(ckpt)
 
         cap = cv2.VideoCapture(video_path)
         if not cap.isOpened():
             raise FileNotFoundError(f"Cannot open video: {video_path}")
 
         fps = cap.get(cv2.CAP_PROP_FPS)
-        width = int(cap.get(cv2.CAP_PROP_FRAME_WIDTH))
+        raw_width = int(cap.get(cv2.CAP_PROP_FRAME_WIDTH))
         height = int(cap.get(cv2.CAP_PROP_FRAME_HEIGHT))
         total_frames = int(cap.get(cv2.CAP_PROP_FRAME_COUNT))
+
+        # In stereo mode the raw frame is side-by-side; each half is the real width.
+        if stereo:
+            width = raw_width // 2
+            logger.info("Stereo mode enabled: splitting %dx%d into 2x %dx%d",
+                        raw_width, height, width, height)
+        else:
+            width = raw_width
+
+        if stereo_config is None:
+            stereo_config = StereoConfig()
 
         if max_frames:
             total_frames = min(total_frames - skip_frames, max_frames)
@@ -287,12 +368,29 @@ class PoseEstimator:
 
         all_keypoints = []
         all_confidence = []
+        
+        # State for causal 3D lifting
+        from .lift_core import SlidingWindow, JointHold, coco2h36m, normalize_screen
+        window = SlidingWindow(size=self._lifter.n_frames)
+        joint_hold = JointHold()
+        all_poses_3d = []
+        
+        # Per-frame stereo pelvis depths (mm). Used to scale the 3D output.
+        stereo_pelvis_depths: list[Optional[float]] = []
 
         for frame_idx in range(total_frames):
-            ret, frame = cap.read()
+            ret, raw_frame = cap.read()
             if not ret:
                 break
-                
+
+            # ── Stereo split ──
+            if stereo:
+                frame_left, frame_right = sc.split_stereo_frame(raw_frame)
+                frame = frame_left  # left view is the "main" view for 2D
+            else:
+                frame = raw_frame
+                frame_right = None
+
             if progress_callback:
                 progress_callback(frame_idx / max(total_frames, 1), f"Processing frame {frame_idx}/{total_frames} (2D pose)")
 
@@ -303,18 +401,79 @@ class PoseEstimator:
                 det_result = self._infer_det(self._detector, frame)
             det_instances = det_result.pred_instances
 
-            # Filter to "person" class (class 0 in COCO) and above threshold
-            person_mask = (det_instances.labels == 0) & (det_instances.scores >= self.det_score_threshold)
+            # Humanoid robots often yield very low object detection confidence or are misclassified.
+            # We first look for ANY 'person' detection, even with extremely low confidence.
+            person_mask = (det_instances.labels == 0) & (det_instances.scores >= 0.15)
             bboxes = det_instances.bboxes[person_mask].cpu().numpy()
+            scores = det_instances.scores[person_mask].cpu().numpy()
+
+            # Merge adjacent or overlapping boxes. Because the humanoid might not look perfectly human,
+            # RTMDet sometimes splits it into a "top half" and "bottom half" person detection.
+            # We union any boxes that are close to each other.
+            if len(bboxes) > 1:
+                merged = []
+                used = np.zeros(len(bboxes), dtype=bool)
+                for i in range(len(bboxes)):
+                    if used[i]: continue
+                    c_box = bboxes[i].copy()
+                    used[i] = True
+                    while True:
+                        added = False
+                        for j in range(len(bboxes)):
+                            if used[j]: continue
+                            # Expand box2 slightly (e.g., 50px) to merge near-touches
+                            eb = [bboxes[j][0]-50, bboxes[j][1]-50, bboxes[j][2]+50, bboxes[j][3]+50]
+                            if max(c_box[0], eb[0]) <= min(c_box[2], eb[2]) and max(c_box[1], eb[1]) <= min(c_box[3], eb[3]):
+                                c_box[0] = min(c_box[0], bboxes[j][0])
+                                c_box[1] = min(c_box[1], bboxes[j][1])
+                                c_box[2] = max(c_box[2], bboxes[j][2])
+                                c_box[3] = max(c_box[3], bboxes[j][3])
+                                used[j] = True
+                                added = True
+                        if not added: break
+                    merged.append(c_box)
+                bboxes = np.array(merged)
+                # Re-compute scores (just take max for now since we merge)
+                scores = np.array([1.0] * len(bboxes), dtype=np.float32)
 
             if len(bboxes) == 0:
-                # No detection: fill with zeros
+                # If no 'person' is found, look at all detections >= 0.15 as a fallback
+                any_mask = (det_instances.scores >= 0.15)
+                candidate_bboxes = det_instances.bboxes[any_mask].cpu().numpy()
+                
+                if len(candidate_bboxes) > 0:
+                    # Pick the largest bounding box by area, as the robot is the main subject
+                    # (Avoids picking high-confidence small background objects like a cup or chair)
+                    areas = (candidate_bboxes[:, 2] - candidate_bboxes[:, 0]) * (candidate_bboxes[:, 3] - candidate_bboxes[:, 1])
+                    best_idx = np.argmax(areas)
+                    bboxes = candidate_bboxes[best_idx:best_idx+1]
+                    scores = np.array([0.5], dtype=np.float32) # fake score to pass through
+
+            if len(bboxes) > 0:
+                h_img, w_img = frame.shape[:2]
+                for i in range(len(bboxes)):
+                    bx1, by1, bx2, by2 = bboxes[i]
+                    bh = by2 - by1
+                    bw = bx2 - bx1
+                    
+                    # Aggressively expand the bounding box vertically!
+                    # Expand 60% upwards, 120% downwards, and 20% horizontally
+                    new_y1 = max(0, by1 - 0.6 * bh)
+                    new_y2 = min(h_img, by2 + 1.2 * bh)
+                    new_x1 = max(0, bx1 - 0.2 * bw)
+                    new_x2 = min(w_img, bx2 + 0.2 * bw)
+                    
+                    bboxes[i] = [new_x1, new_y1, new_x2, new_y2]
+
+            if len(bboxes) == 0:
+                # Still no detection: fill with zeros
                 all_keypoints.append(np.zeros((n_joints, 2), dtype=np.float32))
                 all_confidence.append(np.zeros(n_joints, dtype=np.float32))
+                all_poses_3d.append(np.zeros((COCO_BODY_KEYPOINTS, 3), dtype=np.float32))
+                stereo_pelvis_depths.append(None)
                 continue
 
             # Step 2: Run pose estimation (take the highest-confidence detection)
-            scores = det_instances.scores[person_mask].cpu().numpy()
             best_idx = np.argmax(scores)
             best_bbox = bboxes[best_idx]
 
@@ -340,14 +499,164 @@ class PoseEstimator:
 
                 all_keypoints.append(kpts.astype(np.float32))
                 all_confidence.append(scores.astype(np.float32))
+
+                # ── Stereo: run 2D on the right frame & triangulate pelvis ──
+                pelvis_depth_mm: Optional[float] = None
+                if stereo and frame_right is not None:
+                    # Reuse left frame's bounding box to skip duplicate object detection
+                    with DefaultScope.overwrite_default_scope('mmpose'):
+                        pose_r = self._infer_pose(
+                            self._pose_model,
+                            frame_right,
+                            bboxes=best_bbox[None],
+                        )
+                    if pose_r and len(pose_r) > 0:
+                            pred_r = pose_r[0].pred_instances
+                            kpts_r = pred_r.keypoints[0][:COCO_BODY_KEYPOINTS]
+                            scores_kp_r = pred_r.keypoint_scores[0][:COCO_BODY_KEYPOINTS]
+                            # Build COCO-format (17,3) arrays for match_pelvis
+                            coco_left_17 = np.concatenate(
+                                [kpts.astype(np.float32),
+                                 scores[:COCO_BODY_KEYPOINTS, None].astype(np.float32)],
+                                axis=1)
+                            coco_right_17 = np.concatenate(
+                                [kpts_r.astype(np.float32),
+                                 scores_kp_r[:, None].astype(np.float32)],
+                                axis=1)
+                            pelvis_l, pelvis_r_pt, pelvis_ok = sc.match_pelvis(
+                                coco_left_17, coco_right_17, conf_thresh=0.3)
+                            if pelvis_ok:
+                                d = sc.triangulate_depth(
+                                    pelvis_l[0], pelvis_r_pt[0],
+                                    stereo_config.focal_length_px,
+                                    stereo_config.baseline_mm)
+                                if d != float('inf'):
+                                    pelvis_depth_mm = d
+
+                stereo_pelvis_depths.append(pelvis_depth_mm)
+
+                # ── Convert COCO keypoints to H36M for the pose lifter ──
+                coco_conf = scores[:COCO_BODY_KEYPOINTS, None]
+                coco_17 = np.concatenate([kpts[:COCO_BODY_KEYPOINTS], coco_conf], axis=-1)
+                
+                # Convert format and apply JointHold memory
+                h36m_17 = coco2h36m(coco_17)
+                held_h36m, _ = joint_hold.update(h36m_17)
+                
+                # Normalize and push to causal sliding window
+                norm_h36m = normalize_screen(held_h36m, width, height)
+                win_tensor = window.push(norm_h36m)
+                
+                # Run the lifter
+                pose_3d = self._lifter.lift(win_tensor)
+                
+                if frame_idx == 0:
+                    logger.info(f"First 3D pose (H36M): {pose_3d}")
+                all_poses_3d.append(pose_3d)
             else:
                 all_keypoints.append(np.zeros((n_joints, 2), dtype=np.float32))
                 all_confidence.append(np.zeros(n_joints, dtype=np.float32))
+                stereo_pelvis_depths.append(None)
+                all_poses_3d.append(np.zeros((COCO_BODY_KEYPOINTS, 3), dtype=np.float32))
 
             if (frame_idx + 1) % 50 == 0:
                 logger.info("Processed %d / %d frames", frame_idx + 1, total_frames)
 
         cap.release()
+
+        if len(all_poses_3d) == 0 or len(all_keypoints) == 0:
+            logger.warning("No valid frames or 3D poses extracted from video: %s", video_path)
+            return PoseResult(
+                keypoints=np.zeros((0, n_joints, 2), dtype=np.float32),
+                confidence=np.zeros((0, n_joints), dtype=np.float32),
+                poses_3d=np.zeros((0, COCO_BODY_KEYPOINTS, 3), dtype=np.float32),
+                num_frames=0,
+                num_joints=n_joints,
+                fps=fps,
+                frame_width=width,
+                frame_height=height,
+                stereo_used=stereo,
+            )
+
+        poses_3d_arr = np.stack(all_poses_3d) # (T, 17, 3) in H36M format
+
+        # ── Unproject X and Y using stereo depth or dynamic estimation ──
+        # The AI output has X and Y as tangent angles, and Z as root-relative depth in meters.
+        # We need absolute depth to unproject X and Y into true metric space.
+        if stereo and any(d is not None for d in stereo_pelvis_depths):
+            valid_depths = [d for d in stereo_pelvis_depths if d is not None]
+            median_depth_mm = float(np.median(valid_depths))
+            logger.info("Stereo fusion: anchoring 3D poses to triangulated median depth: %.1f mm", median_depth_mm)
+            depth_m = median_depth_mm / 1000.0
+            
+            poses_3d_arr[:, :, 0] *= depth_m
+            poses_3d_arr[:, :, 1] *= depth_m
+        else:
+            # Monocular fallback: estimate depth dynamically based on torso length
+            logger.info("Monocular mode: dynamically estimating depth from torso length.")
+            # H36M pelvis is 0, neck is 8.
+            # Use 0.5m for human torso, 0.2918m for G1 retrained torso
+            assumed_torso_m = 0.2918 if morphology == "g1_retrained" else 0.5
+            
+            for t in range(poses_3d_arr.shape[0]):
+                torso_tangent = np.linalg.norm(poses_3d_arr[t, 8, :2] - poses_3d_arr[t, 0, :2])
+                dynamic_depth = assumed_torso_m / max(torso_tangent, 1e-4)
+                poses_3d_arr[t, :, 0] *= dynamic_depth
+                poses_3d_arr[t, :, 1] *= dynamic_depth
+                
+            # Set a generic absolute depth for visualization
+            median_depth_mm = 3000.0
+
+        if morphology == "g1":
+            logger.info("Applying Unitree G1 morphology (rescaling limb lengths)...")
+            for t in range(poses_3d_arr.shape[0]):
+                poses_3d_arr[t] = apply_g1_morphology(poses_3d_arr[t])
+
+        # Convert from meters to millimeters for the rest of the pipeline
+        poses_3d_arr *= 1000.0
+        
+        # Push the skeleton away from the camera by the absolute depth
+        poses_3d_arr[:, :, 2] += median_depth_mm
+
+        # Apply zero-phase Butterworth filter to smooth out 3D jitter
+        from .filter import TelemetryFilter
+        filter_fps = fps if fps > 0 else 30.0
+        pose_filter = TelemetryFilter(sample_rate=filter_fps, cutoff_freq=5.0)
+        poses_3d_arr = pose_filter.filter_array(poses_3d_arr)
+
+        # ── Map MotionBERT H36M coordinates to ThreeJS ──
+        # MotionBERT outputs 3D poses in H36M space:
+        #   X = right (positive)
+        #   Y = up (negative is up in H36M raw, we flip it)
+        #   Z = forward (positive away from camera)
+        #
+        # ThreeJS expects: X=right, Y=up, Z=towards-camera
+        converted = np.empty_like(poses_3d_arr)
+        converted[:, :, 0] = poses_3d_arr[:, :, 0]   # X (left-right)
+        converted[:, :, 1] = -poses_3d_arr[:, :, 1]  # Y (flip up)
+        converted[:, :, 2] = -poses_3d_arr[:, :, 2]  # Z (flip depth)
+        
+        # MotionAGFormer native output and our stereo scaling are in millimeters.
+        # ThreeJS expects meters (the camera is at z=3, grid is 5x5).
+        # We must divide by 1000, otherwise the giant skeleton clips through the camera.
+        poses_3d_arr = converted / 1000.0
+
+        # Map H36M (17 joints) → COCO (17 joints)
+        coco_poses_3d = np.full((len(all_poses_3d), COCO_BODY_KEYPOINTS, 3), np.nan, dtype=np.float32)
+        coco_poses_3d[:, 0] = poses_3d_arr[:, 10]  # Nose ← head (H36M 10, closest match)
+        # Joints 1-4 (eyes, ears) have no H36M equivalent — left as NaN
+        coco_poses_3d[:, 5] = poses_3d_arr[:, 11]  # L Shoulder
+        coco_poses_3d[:, 6] = poses_3d_arr[:, 14]  # R Shoulder
+        coco_poses_3d[:, 7] = poses_3d_arr[:, 12]  # L Elbow
+        coco_poses_3d[:, 8] = poses_3d_arr[:, 15]  # R Elbow
+        coco_poses_3d[:, 9] = poses_3d_arr[:, 13]  # L Wrist
+        coco_poses_3d[:, 10] = poses_3d_arr[:, 16] # R Wrist
+        coco_poses_3d[:, 11] = poses_3d_arr[:, 4]  # L Hip
+        coco_poses_3d[:, 12] = poses_3d_arr[:, 1]  # R Hip
+        coco_poses_3d[:, 13] = poses_3d_arr[:, 5]  # L Knee
+        coco_poses_3d[:, 14] = poses_3d_arr[:, 2]  # R Knee
+        coco_poses_3d[:, 15] = poses_3d_arr[:, 6]  # L Ankle
+        coco_poses_3d[:, 16] = poses_3d_arr[:, 3]  # R Ankle
 
         keypoints_arr = np.stack(all_keypoints)  # (T, J, 2)
         confidence_arr = np.stack(all_confidence) # (T, J)
@@ -360,11 +669,13 @@ class PoseEstimator:
         return PoseResult(
             keypoints=keypoints_arr,
             confidence=confidence_arr,
+            poses_3d=coco_poses_3d,
             num_frames=len(all_keypoints),
             num_joints=n_joints,
             fps=fps,
             frame_width=width,
             frame_height=height,
+            stereo_used=stereo,
         )
 
 

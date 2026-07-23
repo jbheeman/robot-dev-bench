@@ -5,17 +5,25 @@ import math
 import numpy as np
 import pandas as pd
 import torch
+
+# PyTorch 2.6 defaults weights_only=True which breaks mmengine/mmpose checkpoints.
+# Monkeypatch it here to default to False.
+_original_load = torch.load
+def _legacy_load(*args, **kwargs):
+    kwargs.setdefault('weights_only', False)
+    return _original_load(*args, **kwargs)
+torch.load = _legacy_load
+
 import threading
 from fastapi import BackgroundTasks
 from src.processing.jobs import JobStore
-from src.processing.pose_estimation import PoseEstimator
+from src.processing.pose_estimation import PoseEstimator, StereoConfig
 from fastapi import FastAPI, UploadFile, File, Form, HTTPException
 from fastapi.responses import JSONResponse
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel
 
 from src.ingestion.schema_mapper import SchemaMapper
-from src.processing.monocular_depth import estimate_monocular_pose_and_depth
 from src.features.biomechanics import (
     compute_smoothness_3d,
     compute_sparc_3d,
@@ -24,6 +32,7 @@ from src.features.biomechanics import (
     compute_rom_3d,
     compute_jumping_metrics_3d,
     compute_transition_metrics_3d,
+    compute_walk_grade_3d,
     compute_smoothness,
     compute_spectral_arc_length,
     compute_symmetry,
@@ -55,7 +64,7 @@ _DEFAULT_MONO_DIST = np.zeros(5)
 # these via ffmpeg, which sniffs the container from content rather than the
 # extension, but we still validate + preserve the extension on the temp file
 # so downstream tools that DO key off the suffix behave correctly.
-ALLOWED_VIDEO_EXTENSIONS = (".mp4", ".mov")
+ALLOWED_VIDEO_EXTENSIONS = (".mp4", ".mov", ".webm")
 JOB_STORE = JobStore()
 INFERENCE_LOCK = threading.Lock()
 GLOBAL_ESTIMATOR = None
@@ -102,47 +111,48 @@ def _sanitize_floats(value):
 
 
 
-def _process_upload_task(job_id: str, tmp_name: str, filename: str, task: str):
+def _process_upload_task(job_id: str, tmp_name: str, filename: str, task: str,
+                         stereo: bool = False, baseline: float = 60.0,
+                         focal_length: float = 800.0, morphology: str = "g1"):
     try:
-        logger.info(f"Received mono AV payload. Camera: {filename}")
+        mode_label = "stereo" if stereo else "mono"
+        logger.info(f"Received {mode_label} AV payload. Camera: {filename}")
         JOB_STORE.update_job(job_id, 0.1, "Starting pose estimation...")
 
         K, dist = _DEFAULT_MONO_K, _DEFAULT_MONO_DIST
 
         device = get_device()
-        logger.info(f"Running 2D pose estimation + monocular depth lifting on {device}...")
+        logger.info(f"Running 2D pose estimation + {'stereo-fused' if stereo else 'monocular'} depth lifting on {device}...")
         
         def progress_cb(pct: float, msg: str):
             # Scale 2D pose estimation to be 10% -> 90% of the job
             overall_pct = 0.1 + (pct * 0.8)
             JOB_STORE.update_job(job_id, overall_pct, msg)
 
+        stereo_config = StereoConfig(
+            baseline_mm=baseline,
+            focal_length_px=focal_length,
+        ) if stereo else None
+
         global GLOBAL_ESTIMATOR
         with INFERENCE_LOCK:
             if GLOBAL_ESTIMATOR is None:
                 GLOBAL_ESTIMATOR = PoseEstimator(device=device)
 
-            pose_result, poses_3d, valid_mask = estimate_monocular_pose_and_depth(
-                tmp_name, K, dist, device=device, progress_callback=progress_cb, estimator=GLOBAL_ESTIMATOR
+            pose_result = GLOBAL_ESTIMATOR.estimate_from_video(
+                tmp_name, max_frames=None, progress_callback=progress_cb,
+                stereo=stereo, stereo_config=stereo_config, morphology=morphology
             )
 
         JOB_STORE.update_job(job_id, 0.9, "Extracting biomechanical features...")
 
         # Biomechanics features
         fps = pose_result.fps or 30.0
-
-        # Apply a temporal lowpass filter to the raw monocular 3D poses
-        # to eliminate the aggressive Z-axis jitter inherent to monocular lifting.
-        from src.features.biomechanics import _interpolate_nans
-        from src.processing.filter import TelemetryFilter
+        poses_3d = pose_result.poses_3d
         
-        poses_3d = _interpolate_nans(poses_3d)
-        filter = TelemetryFilter(sample_rate=fps, cutoff_freq=5.0, order=4)
-        
-        T, J, C = poses_3d.shape
-        poses_3d_flat = poses_3d.reshape(T, J * C)
-        poses_3d_smoothed = filter.filter_array(poses_3d_flat)
-        poses_3d = poses_3d_smoothed.reshape(T, J, C)
+        # MotionBERT outputs dense predictions without NaNs, so we don't need a valid mask
+        # for interpolation. Temporal smoothing is also handled intrinsically by the neural network.
+        valid_mask = np.ones((poses_3d.shape[0], poses_3d.shape[1]), dtype=bool)
 
         smoothness = compute_smoothness_3d(poses_3d, fps)
         sparc = compute_sparc_3d(poses_3d, fps)
@@ -151,6 +161,7 @@ def _process_upload_task(job_id: str, tmp_name: str, filename: str, task: str):
         rom = compute_rom_3d(poses_3d)
         jumping = compute_jumping_metrics_3d(poses_3d, fps)
         transition = compute_transition_metrics_3d(poses_3d, fps)
+        walk_grade = compute_walk_grade_3d(poses_3d, fps)
 
         metrics = {
             "smoothness_ldlj": smoothness.get("mean_ldlj", 0.0),
@@ -163,6 +174,11 @@ def _process_upload_task(job_id: str, tmp_name: str, filename: str, task: str):
             "landing_jerk": jumping.get("landing_jerk", 0.0),
             "com_oscillation": transition.get("com_oscillation", 0.0),
             "transition_time": transition.get("transition_time", 0.0),
+            "walk_grade": walk_grade.get("walk_grade", 0.0),
+            "mean_clearance_cm": walk_grade.get("mean_clearance_cm", 0.0),
+            "stride_length_m": walk_grade.get("stride_length_m", 0.0),
+            "speed_m_s": walk_grade.get("speed_m_s", 0.0),
+            "torso_oscillation_cm": walk_grade.get("torso_oscillation_cm", 0.0),
         }
         metrics = _sanitize_floats(metrics)
 
@@ -175,13 +191,15 @@ def _process_upload_task(job_id: str, tmp_name: str, filename: str, task: str):
         poses_3d_clean = np.where(np.isnan(poses_3d), None, poses_3d).tolist()
         valid_mask_clean = valid_mask.tolist()
         
+        message_label = "stereo-fused depth" if pose_result.stereo_used else "monocular depth estimate"
         result_payload = {
             "task": task,
             "status": "success",
-            "message": "Analysis complete (monocular depth estimate).",
+            "message": f"Analysis complete ({message_label}).",
             "metrics": metrics,
             "poses_3d": poses_3d_clean,
             "valid_mask": valid_mask_clean,
+            "stereo_used": pose_result.stereo_used,
             "classification": {
                 "score": score,
                 "tier": tier,
@@ -211,14 +229,43 @@ async def upload_av_file(
     background_tasks: BackgroundTasks,
     camera: UploadFile = File(...),
     task: str = Form("general"),
+    stereo: str = Form("false"),
+    baseline: float = Form(60.0),
+    focal_length: float = Form(800.0),
+    morphology: str = Form("g1"),
 ):
     suffix = _video_suffix(camera.filename)
     tmp = tempfile.NamedTemporaryFile(suffix=suffix, delete=False)
     tmp.write(await camera.read())
     tmp.close()
 
+    process_path = tmp.name
+    # Convert webm / non-mp4 recordings to standard x264 mp4 via ffmpeg
+    # so OpenCV decodes every single frame reliably without codec errors
+    if suffix in (".webm", ".mov"):
+        mp4_tmp = tempfile.NamedTemporaryFile(suffix=".mp4", delete=False)
+        mp4_tmp.close()
+        try:
+            import subprocess
+            subprocess.run([
+                "ffmpeg", "-y", "-i", tmp.name,
+                "-c:v", "libx264", "-preset", "ultrafast", "-pix_fmt", "yuv420p",
+                mp4_tmp.name
+            ], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, check=True)
+            os.remove(tmp.name)
+            process_path = mp4_tmp.name
+            logger.info(f"Converted {camera.filename} ({suffix}) to standard MP4 via ffmpeg")
+        except Exception as e:
+            logger.warning(f"ffmpeg conversion failed: {e}")
+            process_path = tmp.name
+
+    is_stereo = stereo.lower() in ("true", "1", "yes")
+
     job_id = JOB_STORE.create_job()
-    background_tasks.add_task(_process_upload_task, job_id, tmp.name, camera.filename, task)
+    background_tasks.add_task(
+        _process_upload_task, job_id, process_path, camera.filename, task,
+        stereo=is_stereo, baseline=baseline, focal_length=focal_length, morphology=morphology
+    )
 
     return JSONResponse(content={"job_id": job_id, "status": "accepted"})
 

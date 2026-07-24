@@ -243,7 +243,12 @@ class PoseEstimator:
         logger.info("Loading ViTPose++ pose model …")
         pose_config = self._resolve_config("mmpose", _DEFAULT_POSE_CONFIG)
         pose_checkpoint = self._resolve_checkpoint("mmpose", _DEFAULT_POSE_CONFIG)
-        self._pose_model = init_pose(pose_config, pose_checkpoint, device=self.device)
+        self._pose_model = init_pose(
+            pose_config, 
+            pose_checkpoint, 
+            device=self.device,
+            cfg_options={'model.backbone.init_cfg': None}
+        )
 
         # Apply TTA (Test-Time Augmentation) for pose model if supported
         if hasattr(self._pose_model, 'cfg'):

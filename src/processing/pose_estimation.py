@@ -170,8 +170,8 @@ def _try_import_mmdet():
 # ── Model configuration ─────────────────────────────────────────────────────
 
 # Default ViTPose++ config and checkpoint (downloaded on first use)
-# Using the small variant for reasonable CPU inference speed.
-_DEFAULT_POSE_CONFIG = "td-hm_ViTPose-small_8xb64-210e_coco-256x192"
+# Using the huge variant for maximum accuracy.
+_DEFAULT_POSE_CONFIG = "td-hm_ViTPose-huge_8xb64-210e_coco-256x192"
 _DEFAULT_DET_CONFIG = "rtmdet_m_8xb32-300e_coco"
 
 # Model cache directory
@@ -245,6 +245,22 @@ class PoseEstimator:
         pose_checkpoint = self._resolve_checkpoint("mmpose", _DEFAULT_POSE_CONFIG)
         self._pose_model = init_pose(pose_config, pose_checkpoint, device=self.device)
 
+        # Apply TTA (Test-Time Augmentation) for pose model if supported
+        if hasattr(self._pose_model, 'cfg'):
+            if 'test_dataloader' in self._pose_model.cfg:
+                dataset_cfg = self._pose_model.cfg.test_dataloader.get('dataset', {})
+                if 'pipeline' in dataset_cfg:
+                    # Enabling flip_test implicitly if possible, but usually MMPose 1.x
+                    # requires it to be set in the config. We will rely on model default or manually set it.
+                    pass
+        # MMPose 1.x handles TTA via model.cfg.model.test_cfg.flip_test
+        try:
+            if hasattr(self._pose_model.cfg, 'model') and hasattr(self._pose_model.cfg.model, 'test_cfg'):
+                self._pose_model.cfg.model.test_cfg.flip_test = True
+                logger.info("Enabled flip_test (TTA) for ViTPose++")
+        except Exception:
+            pass
+
         # Initialise lifter model
         logger.info("Loading MotionAGFormer lifter model …")
         from .lifter import Lifter
@@ -295,6 +311,10 @@ class PoseEstimator:
             "rtmdet_m_8xb32-300e_coco": (
                 "https://download.openmmlab.com/mmdetection/v3.0/"
                 "rtmdet/rtmdet_m_8xb32-300e_coco/rtmdet_m_8xb32-300e_coco_20220719_112220-229f527c.pth"
+            ),
+            "td-hm_ViTPose-huge_8xb64-210e_coco-256x192": (
+                "https://download.openmmlab.com/mmpose/v1/body_2d_keypoint/topdown_heatmap/"
+                "coco/td-hm_ViTPose-huge_8xb64-210e_coco-256x192-e32adcd4_20230314.pth"
             ),
             "td-hm_ViTPose-small_8xb64-210e_coco-256x192": (
                 "https://download.openmmlab.com/mmpose/v1/body_2d_keypoint/topdown_heatmap/"
@@ -611,6 +631,21 @@ class PoseEstimator:
             logger.info("Applying Unitree G1 morphology (rescaling limb lengths)...")
             for t in range(poses_3d_arr.shape[0]):
                 poses_3d_arr[t] = apply_g1_morphology(poses_3d_arr[t])
+
+        # ── Post-processing Smoothing ──
+        try:
+            from .filter import TelemetryFilter
+            logger.info("Applying Butterworth low-pass filter to 3D trajectories (cutoff=5Hz)...")
+            # Create a 5Hz cutoff lowpass filter for smoothing the 3D coordinates.
+            # Assuming typical walk cycle frequencies are ~1-2Hz, 5Hz keeps the shape while removing micro-jitter.
+            b_filter = TelemetryFilter(sample_rate=fps, cutoff_freq=5.0, order=4)
+            # poses_3d_arr is (T, 17, 3). We flatten the spatial dims to filter along T.
+            T, J, D = poses_3d_arr.shape
+            flat_poses = poses_3d_arr.reshape(T, J * D)
+            filtered_flat = b_filter.filter_array(flat_poses)
+            poses_3d_arr = filtered_flat.reshape(T, J, D)
+        except Exception as e:
+            logger.warning(f"Failed to apply Butterworth filter: {e}")
 
         # Convert from meters to millimeters for the rest of the pipeline
         poses_3d_arr *= 1000.0

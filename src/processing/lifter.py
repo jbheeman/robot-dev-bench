@@ -16,17 +16,17 @@ import torch
 
 _HERE = os.path.dirname(os.path.abspath(__file__))
 _REPO = os.path.join(_HERE, "..", "..", "third_party", "MotionAGFormer")
-_CKPT = os.path.join(_HERE, "..", "..", "checkpoints", "motionagformer-s-h36m.pth.tr")
+_CKPT = os.path.join(_HERE, "..", "..", "checkpoints", "motionagformer-b-g1", "best_epoch.pth.tr")
 
-# MotionAGFormer-S (H36M), from configs/h36m/MotionAGFormer-small.yaml
-S_CONFIG = dict(
-    n_layers=26, dim_in=3, dim_feat=64, dim_rep=512, dim_out=3, mlp_ratio=4,
-    num_heads=8, n_frames=81, use_temporal_similarity=True, neighbour_num=2,
+# MotionAGFormer-Base (G1), from configs/h36m/MotionAGFormer-base.yaml
+B_CONFIG = dict(
+    n_layers=16, dim_in=3, dim_feat=128, dim_rep=512, dim_out=3, mlp_ratio=4,
+    num_heads=8, n_frames=243, use_temporal_similarity=True, neighbour_num=2,
     use_tcn=False, graph_only=False, hierarchical=False,
     use_adaptive_fusion=True, use_layer_scale=True,
     layer_scale_init_value=1e-5, qkv_bias=False,
 )
-N_FRAMES = S_CONFIG["n_frames"]
+N_FRAMES = B_CONFIG["n_frames"]
 
 
 def resolve_device(prefer: str = "auto") -> torch.device:
@@ -63,7 +63,7 @@ class Lifter:
         from model.MotionAGFormer import MotionAGFormer  # noqa: E402
 
         self.device = resolve_device(device)
-        self.model = MotionAGFormer(**S_CONFIG)
+        self.model = MotionAGFormer(**B_CONFIG)
         self.load_checkpoint(checkpoint)
         
     def load_checkpoint(self, checkpoint: str) -> None:

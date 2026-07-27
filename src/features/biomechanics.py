@@ -748,3 +748,271 @@ def compute_walk_grade_3d(
         "torso_score": float(torso_score),
     }
 
+
+# ──────────────────────────────────────────────────────────────────────────────
+# 2D Walk Grade — pixel-based grading with reference-length scaling
+# ──────────────────────────────────────────────────────────────────────────────
+
+# COCO keypoint indices used by ViTPose
+_COCO_L_SHOULDER = 5
+_COCO_R_SHOULDER = 6
+_COCO_L_ELBOW = 7
+_COCO_R_ELBOW = 8
+_COCO_L_HIP = 11
+_COCO_R_HIP = 12
+_COCO_L_ANKLE = 15
+_COCO_R_ANKLE = 16
+
+
+def _pixel_dist(a: np.ndarray, b: np.ndarray) -> float:
+    """Euclidean distance between two 2D points."""
+    return float(np.linalg.norm(a - b))
+
+
+def compute_walk_grade_2d(
+    keypoints: np.ndarray,
+    confidence: np.ndarray,
+    fps: float,
+    ref_length_cm: float = 20.0,
+    conf_threshold: float = 0.3,
+    view: str = "side",
+) -> Dict[str, Any]:
+    """Grade a walk cycle from 2D pixel keypoints.
+
+    Parameters
+    ----------
+    keypoints : (T, J, 2)
+        Per-frame COCO keypoints in pixel coordinates (x, y).
+    confidence : (T, J)
+        Per-frame joint confidence scores.
+    fps : float
+        Video frame rate.
+    ref_length_cm : float
+        The physical distance (in cm) between the shoulder and elbow joints.
+        Used to convert pixel distances to real-world units.
+    conf_threshold : float
+        Minimum confidence to consider a joint detection valid.
+    view : str
+        "side" or "front". Determines which metrics to extract.
+
+    Returns
+    -------
+    dict with walk_grade (0-100), sub-scores, and metric values in cm / m / m/s.
+    """
+    T = keypoints.shape[0]
+    empty = {
+        "walk_grade": 0.0,
+        "status": "insufficient_data",
+        "mean_clearance_cm": 0.0,
+        "stride_length_m": 0.0,
+        "speed_m_s": 0.0,
+        "torso_oscillation_cm": 0.0,
+        "clearance_score": 0.0,
+        "symmetry_score": 0.0,
+        "speed_score": 0.0,
+        "torso_score": 0.0,
+        "cm_per_pixel": 0.0,
+    }
+    if T < 10 or fps <= 0:
+        return empty
+
+    # ── Compute cm-per-pixel scale from shoulder-to-elbow reference ──
+    ref_pixels = []
+    for t in range(T):
+        # Try left arm
+        if (confidence[t, _COCO_L_SHOULDER] >= conf_threshold and
+                confidence[t, _COCO_L_ELBOW] >= conf_threshold):
+            d = _pixel_dist(keypoints[t, _COCO_L_SHOULDER],
+                            keypoints[t, _COCO_L_ELBOW])
+            if d > 1.0:
+                ref_pixels.append(d)
+        # Try right arm
+        if (confidence[t, _COCO_R_SHOULDER] >= conf_threshold and
+                confidence[t, _COCO_R_ELBOW] >= conf_threshold):
+            d = _pixel_dist(keypoints[t, _COCO_R_SHOULDER],
+                            keypoints[t, _COCO_R_ELBOW])
+            if d > 1.0:
+                ref_pixels.append(d)
+
+    if len(ref_pixels) < 5:
+        empty["status"] = "reference_too_few_detections"
+        return empty
+
+    median_ref_px = float(np.median(ref_pixels))
+    cm_per_px = ref_length_cm / median_ref_px
+
+    # ── Build per-frame joint positions in cm (with NaN for low-conf) ──
+    kp_cm = keypoints.copy().astype(np.float64)
+    for t in range(T):
+        for j in range(keypoints.shape[1]):
+            if confidence[t, j] < conf_threshold:
+                kp_cm[t, j] = [np.nan, np.nan]
+    kp_cm *= cm_per_px  # convert pixel -> cm
+
+    # Linear-interpolate NaN gaps per joint
+    for j in range(kp_cm.shape[1]):
+        for axis in range(2):
+            traj = kp_cm[:, j, axis]
+            nans = np.isnan(traj)
+            if nans.all():
+                continue
+            good = ~nans
+            traj[nans] = np.interp(np.where(nans)[0], np.where(good)[0], traj[good])
+
+    dt = 1.0 / fps
+
+    # ── 1. Torso Levelness & Sway (10-40%) ──
+    # Average Y of left and right hip across frames
+    hip_y = (kp_cm[:, _COCO_L_HIP, 1] + kp_cm[:, _COCO_R_HIP, 1]) / 2.0
+    torso_osc_cm = float(np.std(hip_y))
+
+    torso_score = 100.0
+    # > 2cm oscillation starts penalty; > 5cm = 0
+    if torso_osc_cm > 2.0:
+        penalty = ((torso_osc_cm - 2.0) / 3.0) * 100.0
+        torso_score = max(0.0, 100.0 - penalty)
+        
+    lateral_sway_cm = 0.0
+    sway_score = 100.0
+    if view == "front":
+        hip_x = (kp_cm[:, _COCO_L_HIP, 0] + kp_cm[:, _COCO_R_HIP, 0]) / 2.0
+        lateral_sway_cm = float(np.std(hip_x))
+        if lateral_sway_cm > 2.0:
+            penalty = ((lateral_sway_cm - 2.0) / 4.0) * 100.0
+            sway_score = max(0.0, 100.0 - penalty)
+
+    # ── 2. Foot Clearance (35%) ──
+    # In 2D pixel space, Y increases downward, so foot *up* = lower Y.
+    # We look at negative-Y peaks (highest foot lift) relative to nearby stance.
+    def analyze_foot_2d(y_traj_cm):
+        """Find swing-phase peaks and compute clearance in cm."""
+        # Invert Y so peaks correspond to foot lifts
+        inv = -y_traj_cm
+        peaks, _ = find_peaks(inv, distance=int(fps * 0.3), prominence=0.5)
+        clearances = []
+        for p in peaks:
+            left_idx = max(0, p - int(fps * 0.5))
+            right_idx = min(T, p + int(fps * 0.5))
+            # Ground level = max Y (lowest point) in local window
+            ground_y = np.max(y_traj_cm[left_idx:right_idx])
+            clearance = ground_y - y_traj_cm[p]
+            if clearance > 0:
+                clearances.append(clearance)
+        return clearances
+
+    l_clear = analyze_foot_2d(kp_cm[:, _COCO_L_ANKLE, 1])
+    r_clear = analyze_foot_2d(kp_cm[:, _COCO_R_ANKLE, 1])
+    all_clearances = l_clear + r_clear
+
+    clearance_score = 100.0
+    mean_clearance_cm = 0.0
+    if not all_clearances:
+        clearance_score = 0.0
+    else:
+        mean_clearance_cm = float(np.mean(all_clearances))
+        # < 2cm is a shuffle
+        if mean_clearance_cm < 2.0:
+            clearance_score -= 50.0
+        # > 6cm is wasting energy
+        elif mean_clearance_cm > 6.0:
+            clearance_score -= 30.0
+
+        std_clearance = float(np.std(all_clearances))
+        # Inconsistent clearance penalised
+        if std_clearance > 0.5:
+            clearance_score -= 50.0
+        elif std_clearance > 0.25:
+            penalty = ((std_clearance - 0.25) / 0.25) * 50.0
+            clearance_score -= penalty
+
+    clearance_score = max(0.0, clearance_score)
+
+    # ── 3. Stride Length / Step Width & Symmetry (35%) ──
+    def find_stance_frames(y_traj_cm):
+        """Find frames where the foot is on the ground (valleys in inverted Y)."""
+        valleys, _ = find_peaks(y_traj_cm, distance=int(fps * 0.3), prominence=0.5)
+        return valleys
+
+    l_stance = find_stance_frames(kp_cm[:, _COCO_L_ANKLE, 1])
+    r_stance = find_stance_frames(kp_cm[:, _COCO_R_ANKLE, 1])
+
+    stride_lengths = []
+    for v in l_stance:
+        dist = abs(kp_cm[v, _COCO_L_ANKLE, 0] - kp_cm[v, _COCO_R_ANKLE, 0])
+        stride_lengths.append(("L", dist))
+    for v in r_stance:
+        dist = abs(kp_cm[v, _COCO_L_ANKLE, 0] - kp_cm[v, _COCO_R_ANKLE, 0])
+        stride_lengths.append(("R", dist))
+
+    symmetry_score = 100.0
+    mean_stride_cm = 0.0
+    l_strides = [s[1] for s in stride_lengths if s[0] == "L"]
+    r_strides = [s[1] for s in stride_lengths if s[0] == "R"]
+
+    if l_strides and r_strides:
+        mean_l = np.mean(l_strides)
+        mean_r = np.mean(r_strides)
+        mean_stride_cm = float((mean_l + mean_r) / 2.0)
+
+        diff = abs(mean_l - mean_r)
+        if mean_stride_cm > 0:
+            asym_ratio = diff / mean_stride_cm
+            if asym_ratio > 0.05:
+                penalty = min(100.0, ((asym_ratio - 0.05) / 0.15) * 100.0)
+                symmetry_score -= penalty
+    else:
+        symmetry_score = 0.0
+
+    symmetry_score = max(0.0, symmetry_score)
+
+    # ── 4. Speed (20%) ──
+    speed_m_s = 0.0
+    speed_score = 100.0
+    
+    if view == "side":
+        # Horizontal displacement of hip midpoint per second
+        hip_x = (kp_cm[:, _COCO_L_HIP, 0] + kp_cm[:, _COCO_R_HIP, 0]) / 2.0
+        dist_travelled_cm = 0.0
+        for i in range(1, T):
+            dist_travelled_cm += abs(hip_x[i] - hip_x[i - 1])
+
+        duration = T * dt
+        speed_cm_s = float(dist_travelled_cm / duration) if duration > 0 else 0.0
+        speed_m_s = speed_cm_s / 100.0
+
+        if speed_m_s < 0.2:
+            speed_score = 0.0
+        elif speed_m_s < 0.4:
+            speed_score = ((speed_m_s - 0.2) / 0.2) * 100.0
+
+    # ── Final weighted score ──
+    if view == "side":
+        final_score = (
+            (clearance_score * 0.35)
+            + (symmetry_score * 0.35)
+            + (speed_score * 0.20)
+            + (torso_score * 0.10)
+        )
+    else:
+        # Front view weights: clearance, sway, and symmetry (step width)
+        final_score = (
+            (clearance_score * 0.40)
+            + (sway_score * 0.40)
+            + (symmetry_score * 0.20)
+        )
+
+    return {
+        "walk_grade": float(final_score),
+        "mean_clearance_cm": mean_clearance_cm,
+        "stride_length_m": mean_stride_cm / 100.0,
+        "speed_m_s": speed_m_s,
+        "torso_oscillation_cm": torso_osc_cm,
+        "lateral_sway_cm": lateral_sway_cm,
+        "clearance_score": float(clearance_score),
+        "symmetry_score": float(symmetry_score),
+        "speed_score": float(speed_score),
+        "torso_score": float(torso_score),
+        "sway_score": float(sway_score),
+        "cm_per_pixel": cm_per_px,
+        "status": "ok",
+    }

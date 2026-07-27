@@ -33,6 +33,7 @@ from src.features.biomechanics import (
     compute_jumping_metrics_3d,
     compute_transition_metrics_3d,
     compute_walk_grade_3d,
+    compute_walk_grade_2d,
     compute_smoothness,
     compute_spectral_arc_length,
     compute_symmetry,
@@ -113,7 +114,10 @@ def _sanitize_floats(value):
 
 def _process_upload_task(job_id: str, tmp_name: str, filename: str, task: str,
                          stereo: bool = False, baseline: float = 60.0,
-                         focal_length: float = 800.0):
+                         focal_length: float = 800.0,
+                         pipeline_mode: str = "3d",
+                         ref_length_cm: float = 20.0,
+                         camera_view: str = "side"):
     try:
         mode_label = "stereo" if stereo else "mono"
         logger.info(f"Received {mode_label} AV payload. Camera: {filename}")
@@ -141,70 +145,149 @@ def _process_upload_task(job_id: str, tmp_name: str, filename: str, task: str,
 
             pose_result = GLOBAL_ESTIMATOR.estimate_from_video(
                 tmp_name, max_frames=None, progress_callback=progress_cb,
-                stereo=stereo, stereo_config=stereo_config, morphology='human'
+                stereo=stereo, stereo_config=stereo_config, morphology='human',
+                pipeline_mode=pipeline_mode
             )
 
         JOB_STORE.update_job(job_id, 0.9, "Extracting biomechanical features...")
 
-        # Biomechanics features
         fps = pose_result.fps or 30.0
-        poses_3d = pose_result.poses_3d
-        
-        # MotionBERT outputs dense predictions without NaNs, so we don't need a valid mask
-        # for interpolation. Temporal smoothing is also handled intrinsically by the neural network.
-        valid_mask = np.ones((poses_3d.shape[0], poses_3d.shape[1]), dtype=bool)
 
-        smoothness = compute_smoothness_3d(poses_3d, fps)
-        sparc = compute_sparc_3d(poses_3d, fps)
-        symmetry = compute_symmetry_3d(poses_3d)
-        periodicity = compute_periodicity_3d(poses_3d, fps)
-        rom = compute_rom_3d(poses_3d)
-        jumping = compute_jumping_metrics_3d(poses_3d, fps)
-        transition = compute_transition_metrics_3d(poses_3d, fps)
-        walk_grade = compute_walk_grade_3d(poses_3d, fps)
+        if pipeline_mode == "2d":
+            # ── 2D Pipeline: grade directly from pixel keypoints ──
+            walk_grade = compute_walk_grade_2d(
+                pose_result.keypoints,
+                pose_result.confidence,
+                fps,
+                ref_length_cm=ref_length_cm,
+                view=camera_view,
+            )
+            
+            # Convert 2D pixel keypoints to pseudo-3D meters (Z=0) to reuse 3D metric extractors
+            # (Smoothness, SPARC, ROM) for manipulation tasks.
+            cm_per_px = walk_grade.get("cm_per_pixel", 0.0)
+            if cm_per_px > 0:
+                # scale to meters
+                poses_2d_m = pose_result.keypoints.copy() * (cm_per_px / 100.0)
+                # pad with Z=0 -> (T, J, 3)
+                poses_pseudo_3d = np.pad(poses_2d_m, ((0,0), (0,0), (0,1)), mode='constant')
+                
+                smoothness = compute_smoothness_3d(poses_pseudo_3d, fps)
+                sparc = compute_sparc_3d(poses_pseudo_3d, fps)
+                rom = compute_rom_3d(poses_pseudo_3d)
+            else:
+                smoothness = sparc = rom = {}
 
-        metrics = {
-            "smoothness_ldlj": smoothness.get("mean_ldlj", 0.0),
-            "smoothness_sparc": sparc.get("mean_sparc", 0.0),
-            "symmetry": symmetry.get("mean_symmetry_index", 0.0),
-            "periodicity": periodicity.get("regularity_score", 0.0),
-            "rom_utilisation": rom.get("mean_rom", 0.0),
-            "flight_time": jumping.get("flight_time", 0.0),
-            "peak_z_accel": jumping.get("peak_z_accel", 0.0),
-            "landing_jerk": jumping.get("landing_jerk", 0.0),
-            "com_oscillation": transition.get("com_oscillation", 0.0),
-            "transition_time": transition.get("transition_time", 0.0),
-            "walk_grade": walk_grade.get("walk_grade", 0.0),
-            "mean_clearance_cm": walk_grade.get("mean_clearance_cm", 0.0),
-            "stride_length_m": walk_grade.get("stride_length_m", 0.0),
-            "speed_m_s": walk_grade.get("speed_m_s", 0.0),
-            "torso_oscillation_cm": walk_grade.get("torso_oscillation_cm", 0.0),
-        }
-        metrics = _sanitize_floats(metrics)
-
-        JOB_STORE.update_job(job_id, 0.95, "Running classifier...")
-
-        classifier = RuleBasedClassifier()
-        score, tier = classifier.classify(metrics, task)
-        score = _sanitize_floats(score)
-
-        poses_3d_clean = np.where(np.isnan(poses_3d), None, poses_3d).tolist()
-        valid_mask_clean = valid_mask.tolist()
-        
-        message_label = "stereo-fused depth" if pose_result.stereo_used else "monocular depth estimate"
-        result_payload = {
-            "task": task,
-            "status": "success",
-            "message": f"Analysis complete ({message_label}).",
-            "metrics": metrics,
-            "poses_3d": poses_3d_clean,
-            "valid_mask": valid_mask_clean,
-            "stereo_used": pose_result.stereo_used,
-            "classification": {
-                "score": score,
-                "tier": tier,
+            metrics = {
+                "walk_grade": walk_grade.get("walk_grade", 0.0),
+                "mean_clearance_cm": walk_grade.get("mean_clearance_cm", 0.0),
+                "stride_length_m": walk_grade.get("stride_length_m", 0.0),
+                "speed_m_s": walk_grade.get("speed_m_s", 0.0),
+                "torso_oscillation_cm": walk_grade.get("torso_oscillation_cm", 0.0),
+                "cm_per_pixel": walk_grade.get("cm_per_pixel", 0.0),
+                
+                # Biomechanics for manipulation (computed in 2D plane)
+                "smoothness_ldlj": smoothness.get("mean_ldlj", 0.0),
+                "smoothness_sparc": sparc.get("mean_sparc", 0.0),
+                "rom_utilisation": rom.get("mean_rom", 0.0),
+                
+                # Zero out depth-reliant 3D-only metrics
+                "symmetry": 0.0,
+                "periodicity": 0.0,
+                "flight_time": 0.0,
+                "peak_z_accel": 0.0,
+                "landing_jerk": 0.0,
+                "com_oscillation": 0.0,
+                "transition_time": 0.0,
             }
-        }
+            metrics = _sanitize_floats(metrics)
+
+            JOB_STORE.update_job(job_id, 0.95, "Running classifier...")
+            classifier = RuleBasedClassifier()
+            score, tier = classifier.classify(metrics, task)
+            score = _sanitize_floats(score)
+
+            # Return 2D keypoints for the overlay instead of 3D poses
+            keypoints_list = pose_result.keypoints.tolist()
+            confidence_list = pose_result.confidence.tolist()
+
+            result_payload = {
+                "task": task,
+                "status": "success",
+                "pipeline_mode": "2d",
+                "message": f"Analysis complete (2D overlay, {walk_grade.get('cm_per_pixel', 0):.3f} cm/px).",
+                "metrics": metrics,
+                "keypoints_2d": keypoints_list,
+                "confidence_2d": confidence_list,
+                "frame_width": pose_result.frame_width,
+                "frame_height": pose_result.frame_height,
+                "fps": fps,
+                "stereo_used": pose_result.stereo_used,
+                "classification": {
+                    "score": score,
+                    "tier": tier,
+                },
+            }
+        else:
+            # ── 3D Pipeline (existing) ──
+            poses_3d = pose_result.poses_3d
+
+            # MotionBERT outputs dense predictions without NaNs, so we don't need a valid mask
+            # for interpolation. Temporal smoothing is also handled intrinsically by the neural network.
+            valid_mask = np.ones((poses_3d.shape[0], poses_3d.shape[1]), dtype=bool)
+
+            smoothness = compute_smoothness_3d(poses_3d, fps)
+            sparc = compute_sparc_3d(poses_3d, fps)
+            symmetry = compute_symmetry_3d(poses_3d)
+            periodicity = compute_periodicity_3d(poses_3d, fps)
+            rom = compute_rom_3d(poses_3d)
+            jumping = compute_jumping_metrics_3d(poses_3d, fps)
+            transition = compute_transition_metrics_3d(poses_3d, fps)
+            walk_grade = compute_walk_grade_3d(poses_3d, fps)
+
+            metrics = {
+                "smoothness_ldlj": smoothness.get("mean_ldlj", 0.0),
+                "smoothness_sparc": sparc.get("mean_sparc", 0.0),
+                "symmetry": symmetry.get("mean_symmetry_index", 0.0),
+                "periodicity": periodicity.get("regularity_score", 0.0),
+                "rom_utilisation": rom.get("mean_rom", 0.0),
+                "flight_time": jumping.get("flight_time", 0.0),
+                "peak_z_accel": jumping.get("peak_z_accel", 0.0),
+                "landing_jerk": jumping.get("landing_jerk", 0.0),
+                "com_oscillation": transition.get("com_oscillation", 0.0),
+                "transition_time": transition.get("transition_time", 0.0),
+                "walk_grade": walk_grade.get("walk_grade", 0.0),
+                "mean_clearance_cm": walk_grade.get("mean_clearance_cm", 0.0),
+                "stride_length_m": walk_grade.get("stride_length_m", 0.0),
+                "speed_m_s": walk_grade.get("speed_m_s", 0.0),
+                "torso_oscillation_cm": walk_grade.get("torso_oscillation_cm", 0.0),
+            }
+            metrics = _sanitize_floats(metrics)
+
+            JOB_STORE.update_job(job_id, 0.95, "Running classifier...")
+
+            classifier = RuleBasedClassifier()
+            score, tier = classifier.classify(metrics, task)
+            score = _sanitize_floats(score)
+
+            poses_3d_clean = np.where(np.isnan(poses_3d), None, poses_3d).tolist()
+            valid_mask_clean = valid_mask.tolist()
+
+            message_label = "stereo-fused depth" if pose_result.stereo_used else "monocular depth estimate"
+            result_payload = {
+                "task": task,
+                "status": "success",
+                "pipeline_mode": "3d",
+                "message": f"Analysis complete ({message_label}).",
+                "metrics": metrics,
+                "poses_3d": poses_3d_clean,
+                "valid_mask": valid_mask_clean,
+                "stereo_used": pose_result.stereo_used,
+                "classification": {
+                    "score": score,
+                    "tier": tier,
+                },
+            }
         
         JOB_STORE.finish_job(job_id, result_payload)
 
@@ -232,6 +315,9 @@ async def upload_av_file(
     stereo: str = Form("false"),
     baseline: float = Form(60.0),
     focal_length: float = Form(800.0),
+    pipeline_mode: str = Form("3d"),
+    ref_length_cm: float = Form(20.0),
+    camera_view: str = Form("side"),
 ):
     suffix = _video_suffix(camera.filename)
     tmp = tempfile.NamedTemporaryFile(suffix=suffix, delete=False)
@@ -263,7 +349,9 @@ async def upload_av_file(
     job_id = JOB_STORE.create_job()
     background_tasks.add_task(
         _process_upload_task, job_id, process_path, camera.filename, task,
-        stereo=is_stereo, baseline=baseline, focal_length=focal_length
+        stereo=is_stereo, baseline=baseline, focal_length=focal_length,
+        pipeline_mode=pipeline_mode, ref_length_cm=ref_length_cm,
+        camera_view=camera_view
     )
 
     return JSONResponse(content={"job_id": job_id, "status": "accepted"})

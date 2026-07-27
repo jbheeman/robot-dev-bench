@@ -80,6 +80,32 @@
                 </div>
             </div>
 
+            <!-- Pipeline Mode Toggle -->
+            <div class="stereo-settings-panel glass-card" id="pipeline-mode-panel">
+                <div class="stereo-header">
+                    <label class="stereo-toggle-label">
+                        <input type="checkbox" id="pipeline-2d-toggle" class="stereo-checkbox">
+                        <span class="stereo-slider"></span>
+                        <span class="stereo-toggle-text">2D Overlay Mode</span>
+                    </label>
+                    <span class="stereo-badge" id="pipeline-badge-toggle">3D</span>
+                </div>
+                <div class="stereo-fields hidden" id="pipeline-2d-fields">
+                    <div class="stereo-field">
+                        <label for="ref-length-cm" class="stereo-field-label">Shoulder–Elbow Length (cm)</label>
+                        <input type="number" id="ref-length-cm" class="stereo-input" value="20" min="1" max="100" step="0.1">
+                        <span class="stereo-field-hint">Physical distance between the robot's shoulder and elbow joints (used to scale pixels to real-world units)</span>
+                    </div>
+                    <div class="stereo-field">
+                        <label for="camera-view-select" class="stereo-field-label">Camera Angle</label>
+                        <select id="camera-view-select" class="task-select" style="width: 100%; margin-top: 0.5rem; background: rgba(0,0,0,0.2); border: 1px solid rgba(255,255,255,0.1); color: white; border-radius: 6px; padding: 0.5rem;">
+                            <option value="side">Side Profile</option>
+                            <option value="front">Front Facing</option>
+                        </select>
+                    </div>
+                </div>
+            </div>
+
             <!-- Input Mode Tabs -->
             <div class="input-mode-tabs">
                 <button class="mode-tab active-tab" id="tab-upload" data-mode="upload">
@@ -183,8 +209,26 @@
 
         <!-- Results Dashboard Section -->
         <section id="results-section" class="results-section hidden">
-            <!-- 3D Visualization -->
-            <div class="glass-card full-span" style="display: flex; flex-direction: column; height: 500px;">
+            <!-- 2D Video Overlay (shown in 2D mode) -->
+            <div class="glass-card full-span" id="viewer-2d-container" style="display: none; flex-direction: column; height: 500px;">
+                <div style="display: flex; justify-content: space-between; align-items: center;">
+                    <h3 class="card-title">2D Pose Overlay</h3>
+                    <span class="pipeline-badge" style="background: linear-gradient(135deg, #10b981, #3b82f6); color: #fff; padding: 0.25rem 0.75rem; border-radius: 12px; font-size: 0.8rem;">2D</span>
+                </div>
+                <div id="video-overlay-wrapper" style="flex: 1; border-radius: 8px; overflow: hidden; margin-top: 1rem; position: relative; background: #000;">
+                    <video id="overlay-video" style="width: 100%; height: 100%; object-fit: contain;" muted></video>
+                    <canvas id="pose-canvas" style="position: absolute; top: 0; left: 0; width: 100%; height: 100%; pointer-events: none;"></canvas>
+                </div>
+                <!-- Playback Controls for 2D -->
+                <div class="playback-controls" style="display: flex; align-items: center; gap: 1rem; margin-top: 1rem;">
+                    <button id="play-2d-btn" class="icon-btn">▶</button>
+                    <button id="pause-2d-btn" class="icon-btn">⏸</button>
+                    <input type="range" id="timeline-2d" min="0" max="100" value="0" style="flex: 1; cursor: pointer;">
+                </div>
+            </div>
+
+            <!-- 3D Visualization (shown in 3D mode) -->
+            <div class="glass-card full-span" id="viewer-3d-container" style="display: flex; flex-direction: column; height: 500px;">
                 <div style="display: flex; justify-content: space-between; align-items: center;">
                     <h3 class="card-title">3D Skeletal Reconstruction</h3>
                     <span class="pipeline-badge" id="pipeline-badge">Monocular</span>
@@ -229,15 +273,15 @@
                         <div id="metric-clearance" class="metric-value">--</div>
                     </div>
                     <div class="metric-item">
-                        <span class="metric-label">Stride Length (m)</span>
+                        <span class="metric-label" id="label-stride">Stride Length (m)</span>
                         <div id="metric-stride" class="metric-value">--</div>
                     </div>
                     <div class="metric-item">
-                        <span class="metric-label">Walking Speed (m/s)</span>
+                        <span class="metric-label" id="label-speed">Walking Speed (m/s)</span>
                         <div id="metric-speed" class="metric-value">--</div>
                     </div>
                     <div class="metric-item">
-                        <span class="metric-label">Torso Oscillation (cm)</span>
+                        <span class="metric-label" id="label-oscillation">Torso Oscillation (cm)</span>
                         <div id="metric-oscillation" class="metric-value">--</div>
                     </div>
                     <div class="metric-item">

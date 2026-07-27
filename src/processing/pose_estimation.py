@@ -170,8 +170,8 @@ def _try_import_mmdet():
 # ── Model configuration ─────────────────────────────────────────────────────
 
 # Default ViTPose++ config and checkpoint (downloaded on first use)
-# Using the base variant for a good balance of accuracy and speed.
-_DEFAULT_POSE_CONFIG = "td-hm_ViTPose-base_8xb64-210e_coco-256x192"
+# Using the huge variant for maximum accuracy on non-humanoid morphologies.
+_DEFAULT_POSE_CONFIG = "td-hm_ViTPose-huge_8xb64-210e_coco-256x192"
 _DEFAULT_DET_CONFIG = "rtmdet_m_8xb32-300e_coco"
 
 # Model cache directory
@@ -338,6 +338,7 @@ class PoseEstimator:
         stereo: bool = False,
         stereo_config: Optional[StereoConfig] = None,
         morphology: str = "g1",
+        pipeline_mode: str = "3d",
     ) -> PoseResult:
         """
         Run 2D pose estimation on every frame of a video.
@@ -397,9 +398,10 @@ class PoseEstimator:
         all_confidence = []
         
         # State for causal 3D lifting
-        from .lift_core import SlidingWindow, JointHold, coco2h36m, normalize_screen
-        window = SlidingWindow(size=self._lifter.n_frames)
-        joint_hold = JointHold()
+        if pipeline_mode == "3d":
+            from .lift_core import SlidingWindow, JointHold, coco2h36m, normalize_screen
+            window = SlidingWindow(size=self._lifter.n_frames)
+            joint_hold = JointHold()
         all_poses_3d = []
         
         # Per-frame stereo pelvis depths (mm). Used to scale the 3D output.
@@ -529,7 +531,7 @@ class PoseEstimator:
 
                 # ── Stereo: run 2D on the right frame & triangulate pelvis ──
                 pelvis_depth_mm: Optional[float] = None
-                if stereo and frame_right is not None:
+                if stereo and frame_right is not None and pipeline_mode == "3d":
                     # Reuse left frame's bounding box to skip duplicate object detection
                     with DefaultScope.overwrite_default_scope('mmpose'):
                         pose_r = self._infer_pose(
@@ -563,41 +565,57 @@ class PoseEstimator:
                 stereo_pelvis_depths.append(pelvis_depth_mm)
 
                 # ── Convert COCO keypoints to H36M for the pose lifter ──
-                coco_conf = scores[:COCO_BODY_KEYPOINTS, None]
-                coco_17 = np.concatenate([kpts[:COCO_BODY_KEYPOINTS], coco_conf], axis=-1)
-                
-                # Convert format and apply JointHold memory
-                h36m_17 = coco2h36m(coco_17)
-                held_h36m, _ = joint_hold.update(h36m_17)
-                
-                # Normalize and push to causal sliding window
-                norm_h36m = normalize_screen(held_h36m, width, height)
-                win_tensor = window.push(norm_h36m)
-                
-                # Run the lifter
-                pose_3d = self._lifter.lift(win_tensor)
-                
-                if frame_idx == 0:
-                    logger.info(f"First 3D pose (H36M): {pose_3d}")
-                all_poses_3d.append(pose_3d)
+                if pipeline_mode == "3d":
+                    coco_conf = scores[:COCO_BODY_KEYPOINTS, None]
+                    coco_17 = np.concatenate([kpts[:COCO_BODY_KEYPOINTS], coco_conf], axis=-1)
+                    
+                    # Convert format and apply JointHold memory
+                    h36m_17 = coco2h36m(coco_17)
+                    held_h36m, _ = joint_hold.update(h36m_17)
+                    
+                    # Normalize and push to causal sliding window
+                    norm_h36m = normalize_screen(held_h36m, width, height)
+                    win_tensor = window.push(norm_h36m)
+                    
+                    # Run the lifter
+                    pose_3d = self._lifter.lift(win_tensor)
+                    
+                    if frame_idx == 0:
+                        logger.info(f"First 3D pose (H36M): {pose_3d}")
+                    all_poses_3d.append(pose_3d)
             else:
                 all_keypoints.append(np.zeros((n_joints, 2), dtype=np.float32))
                 all_confidence.append(np.zeros(n_joints, dtype=np.float32))
                 stereo_pelvis_depths.append(None)
-                all_poses_3d.append(np.zeros((COCO_BODY_KEYPOINTS, 3), dtype=np.float32))
+                if pipeline_mode == "3d":
+                    all_poses_3d.append(np.zeros((COCO_BODY_KEYPOINTS, 3), dtype=np.float32))
 
             if (frame_idx + 1) % 50 == 0:
                 logger.info("Processed %d / %d frames", frame_idx + 1, total_frames)
 
         cap.release()
 
-        if len(all_poses_3d) == 0 or len(all_keypoints) == 0:
+        if len(all_keypoints) == 0:
             logger.warning("No valid frames or 3D poses extracted from video: %s", video_path)
             return PoseResult(
                 keypoints=np.zeros((0, n_joints, 2), dtype=np.float32),
                 confidence=np.zeros((0, n_joints), dtype=np.float32),
                 poses_3d=np.zeros((0, COCO_BODY_KEYPOINTS, 3), dtype=np.float32),
                 num_frames=0,
+                num_joints=n_joints,
+                fps=fps,
+                frame_width=width,
+                frame_height=height,
+                stereo_used=stereo,
+            )
+
+        if pipeline_mode == "2d":
+            # In 2D mode we completely skip 3D lifting and smoothing, returning empty 3D structures.
+            return PoseResult(
+                keypoints=np.stack(all_keypoints),
+                confidence=np.stack(all_confidence),
+                poses_3d=np.zeros((len(all_keypoints), COCO_BODY_KEYPOINTS, 3), dtype=np.float32),
+                num_frames=len(all_keypoints),
                 num_joints=n_joints,
                 fps=fps,
                 frame_width=width,

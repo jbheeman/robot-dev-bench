@@ -24,6 +24,20 @@ document.addEventListener('DOMContentLoaded', () => {
         stereoBadge.classList.toggle('stereo-badge-on', on);
     });
 
+    // ── Pipeline mode (2D / 3D) ──
+    const pipeline2dToggle = document.getElementById('pipeline-2d-toggle');
+    const pipeline2dFields = document.getElementById('pipeline-2d-fields');
+    const pipelineBadgeToggle = document.getElementById('pipeline-badge-toggle');
+    const refLengthInput = document.getElementById('ref-length-cm');
+    const cameraViewSelect = document.getElementById('camera-view-select');
+
+    pipeline2dToggle.addEventListener('change', () => {
+        const is2d = pipeline2dToggle.checked;
+        pipeline2dFields.classList.toggle('hidden', !is2d);
+        pipelineBadgeToggle.textContent = is2d ? '2D' : '3D';
+        pipelineBadgeToggle.classList.toggle('stereo-badge-on', is2d);
+    });
+
     const stereoSwap = document.getElementById('stereo-swap');
     
     // Hidden elements for L/R swapping
@@ -302,6 +316,15 @@ document.addEventListener('DOMContentLoaded', () => {
                 formData.append('focal_length', stereoFocalLength.value);
             }
 
+            // Pipeline mode
+            if (pipeline2dToggle.checked) {
+                formData.append('pipeline_mode', '2d');
+                formData.append('ref_length_cm', refLengthInput.value);
+                formData.append('camera_view', cameraViewSelect.value);
+            } else {
+                formData.append('pipeline_mode', '3d');
+            }
+
             const response = await fetch('/api/upload_av', {
                 method: 'POST',
                 body: formData
@@ -420,17 +443,75 @@ document.addEventListener('DOMContentLoaded', () => {
                     'metric-transition': resultData.metrics.transition_time
                 };
                 
+                // Update dynamic labels if front view
+                const view = cameraViewSelect ? cameraViewSelect.value : 'side';
+                const is2DFront = (resultData.pipeline_mode === '2d' && view === 'front');
+                
+                const labelStride = document.getElementById('label-stride');
+                const labelSpeed = document.getElementById('label-speed');
+                const labelOscillation = document.getElementById('label-oscillation');
+                
+                if (labelStride) labelStride.textContent = is2DFront ? 'Step Width (cm)' : 'Stride Length (m)';
+                if (labelSpeed) labelSpeed.textContent = is2DFront ? 'Lateral Sway (cm)' : 'Walking Speed (m/s)';
+                if (labelOscillation) labelOscillation.textContent = is2DFront ? 'Vertical Bounce (cm)' : 'Torso Oscillation (cm)';
+                
+                // Override metrics map for front view so we display the correct data in those slots
+                if (is2DFront) {
+                    metricMap['metric-stride'] = (resultData.metrics.stride_length_m * 100); // Now step width in cm
+                    metricMap['metric-speed'] = resultData.metrics.lateral_sway_cm; // Now lateral sway in cm
+                }
+                
+                // Hide all metrics by default
+                document.querySelectorAll('.metric-item').forEach(el => el.style.display = 'none');
+
+                const relevantMetrics = {
+                    'walk': ['metric-clearance', 'metric-stride', 'metric-speed', 'metric-oscillation', 'metric-ldlj', 'metric-sparc', 'metric-symmetry', 'metric-periodicity', 'metric-rom'],
+                    'jump': ['metric-flight', 'metric-accel', 'metric-jerk', 'metric-com', 'metric-transition', 'metric-ldlj', 'metric-sparc', 'metric-rom'],
+                    'manipulation': ['metric-ldlj', 'metric-sparc', 'metric-rom'],
+                    'general': Object.keys(metricMap) // show all for general
+                };
+
+                const taskType = resultData.task || 'general';
+                const toShow = relevantMetrics[taskType] || relevantMetrics['general'];
+
                 for (const [id, value] of Object.entries(metricMap)) {
                     const el = document.getElementById(id);
-                    if (el) {
+                    if (el && toShow.includes(id)) {
+                        el.parentElement.style.display = 'block';
                         el.textContent = (value !== undefined && value !== null) ? parseFloat(value).toFixed(2) : '0.00';
                     }
                 }
             }
             
-            // Load 3D Playback Data
-            if (resultData.poses_3d && window.loadPlaybackData) {
-                window.loadPlaybackData(resultData.poses_3d, resultData.valid_mask);
+            // Show/hide the correct viewer based on pipeline mode
+            const viewer2d = document.getElementById('viewer-2d-container');
+            const viewer3d = document.getElementById('viewer-3d-container');
+
+            if (resultData.pipeline_mode === '2d') {
+                viewer2d.style.display = 'flex';
+                viewer3d.style.display = 'none';
+
+                // Load 2D overlay
+                if (resultData.keypoints_2d && window.load2DOverlay) {
+                    // Pass the uploaded file as the video source
+                    window.load2DOverlay(
+                        uploadFile,
+                        resultData.keypoints_2d,
+                        resultData.confidence_2d,
+                        resultData.frame_width,
+                        resultData.frame_height,
+                        resultData.fps || 30,
+                        resultData.stereo_used
+                    );
+                }
+            } else {
+                viewer2d.style.display = 'none';
+                viewer3d.style.display = 'flex';
+
+                // Load 3D Playback Data
+                if (resultData.poses_3d && window.loadPlaybackData) {
+                    window.loadPlaybackData(resultData.poses_3d, resultData.valid_mask);
+                }
             }
 
             loadingOverlay.classList.add('hidden');
@@ -442,4 +523,146 @@ document.addEventListener('DOMContentLoaded', () => {
             loadingOverlay.classList.add('hidden');
         }
     });
+
+    // ── 2D Overlay Renderer ──
+    const COCO_SKELETON_2D = [
+        [15, 13], [13, 11], [16, 14], [14, 12], [11, 12],
+        [5, 11], [6, 12], [5, 6],
+        [5, 7], [7, 9], [6, 8], [8, 10],
+        [0, 5], [0, 6],
+    ];
+    const JOINT_COLORS_2D = [
+        '#ef4444', '#f97316', '#eab308', '#22c55e', '#3b82f6',
+        '#8b5cf6', '#ec4899', '#14b8a6', '#f59e0b', '#6366f1',
+        '#10b981', '#0ea5e9', '#a855f7', '#f43f5e', '#06b6d4',
+        '#84cc16', '#d946ef'
+    ];
+
+    let overlay2dData = null;
+    let overlay2dPlaying = false;
+    let overlay2dFrame = 0;
+    let overlay2dAnimId = null;
+
+    window.load2DOverlay = function(videoFile, keypoints, confidence, frameW, frameH, fps, isStereo) {
+        overlay2dData = { keypoints, confidence, frameW, frameH, fps, isStereo };
+        overlay2dFrame = 0;
+        overlay2dPlaying = false;
+
+        const video = document.getElementById('overlay-video');
+        const canvas = document.getElementById('pose-canvas');
+        const timeline = document.getElementById('timeline-2d');
+
+        // Load video
+        const url = URL.createObjectURL(videoFile);
+        video.src = url;
+        video.load();
+
+        timeline.max = keypoints.length - 1;
+        timeline.value = 0;
+
+        video.addEventListener('loadedmetadata', () => {
+            canvas.width = video.videoWidth;
+            canvas.height = video.videoHeight;
+            drawPoseFrame(0);
+        }, { once: true });
+
+        // Play / Pause / Scrub
+        document.getElementById('play-2d-btn').onclick = () => {
+            video.play();
+            overlay2dPlaying = true;
+            animate2DOverlay();
+        };
+        document.getElementById('pause-2d-btn').onclick = () => {
+            video.pause();
+            overlay2dPlaying = false;
+            if (overlay2dAnimId) cancelAnimationFrame(overlay2dAnimId);
+        };
+        timeline.addEventListener('input', (e) => {
+            const f = parseInt(e.target.value);
+            overlay2dFrame = f;
+            // Seek the video to the matching time
+            if (overlay2dData) {
+                video.currentTime = f / overlay2dData.fps;
+            }
+            drawPoseFrame(f);
+        });
+
+        // Sync overlay to video time
+        video.addEventListener('timeupdate', () => {
+            if (!overlay2dData) return;
+            const f = Math.round(video.currentTime * overlay2dData.fps);
+            if (f >= 0 && f < overlay2dData.keypoints.length) {
+                overlay2dFrame = f;
+                timeline.value = f;
+                drawPoseFrame(f);
+            }
+        });
+    };
+
+    function animate2DOverlay() {
+        if (!overlay2dPlaying) return;
+        
+        if (overlay2dData) {
+            const video = document.getElementById('overlay-video');
+            const timeline = document.getElementById('timeline-2d');
+            if (video) {
+                const f = Math.round(video.currentTime * overlay2dData.fps);
+                if (f >= 0 && f < overlay2dData.keypoints.length && f !== overlay2dFrame) {
+                    overlay2dFrame = f;
+                    if (timeline) timeline.value = f;
+                    drawPoseFrame(f);
+                }
+            }
+        }
+        
+        overlay2dAnimId = requestAnimationFrame(animate2DOverlay);
+    }
+
+    function drawPoseFrame(frameIdx) {
+        if (!overlay2dData) return;
+        const canvas = document.getElementById('pose-canvas');
+        const video = document.getElementById('overlay-video');
+        if (!canvas || !video) return;
+        const ctx = canvas.getContext('2d');
+
+        // Scale from original video coords to canvas coords
+        // If the original video is stereo, the keypoints were extracted from the left half.
+        // So the source width corresponds to actual canvas.width / 2.
+        const actualFrameW = overlay2dData.isStereo ? (overlay2dData.frameW * 2) : overlay2dData.frameW;
+        const scaleX = canvas.width / actualFrameW;
+        const scaleY = canvas.height / overlay2dData.frameH;
+
+        ctx.clearRect(0, 0, canvas.width, canvas.height);
+
+        const kp = overlay2dData.keypoints[frameIdx];
+        const conf = overlay2dData.confidence[frameIdx];
+        if (!kp) return;
+
+        const CONF_THRESH = 0.3;
+
+        // Draw bones
+        ctx.lineWidth = 6;
+        for (const [u, v] of COCO_SKELETON_2D) {
+            if (conf[u] >= CONF_THRESH && conf[v] >= CONF_THRESH) {
+                ctx.strokeStyle = '#39ff14'; // Neon green
+                ctx.beginPath();
+                ctx.moveTo(kp[u][0] * scaleX, kp[u][1] * scaleY);
+                ctx.lineTo(kp[v][0] * scaleX, kp[v][1] * scaleY);
+                ctx.stroke();
+            }
+        }
+
+        // Draw joints
+        for (let j = 0; j < kp.length; j++) {
+            if (conf[j] >= CONF_THRESH) {
+                ctx.fillStyle = '#00ffff'; // Cyan
+                ctx.beginPath();
+                ctx.arc(kp[j][0] * scaleX, kp[j][1] * scaleY, 8, 0, Math.PI * 2);
+                ctx.fill();
+                ctx.strokeStyle = '#ffffff';
+                ctx.lineWidth = 3;
+                ctx.stroke();
+            }
+        }
+    }
 });

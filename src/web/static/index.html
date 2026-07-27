@@ -32,6 +32,7 @@
             <div style="display: flex; gap: 1rem; margin-top: 1rem;">
                 <a href="/" style="padding: 0.5rem 1rem; background: var(--primary); color: white; border-radius: 8px; text-decoration: none; font-weight: 500;">Video Pipeline</a>
                 <a href="/legacy.html" style="padding: 0.5rem 1rem; background: rgba(255,255,255,0.05); color: var(--text-secondary); border-radius: 8px; text-decoration: none; font-weight: 500; border: 1px solid rgba(255,255,255,0.1);">Legacy Log Pipeline</a>
+                <a href="/scoring.html" style="padding: 0.5rem 1rem; background: rgba(255,255,255,0.05); color: var(--text-secondary); border-radius: 8px; text-decoration: none; font-weight: 500; border: 1px solid rgba(255,255,255,0.1);">Scoring Explained</a>
             </div>
         </header>
 
@@ -216,8 +217,8 @@
                     <span class="pipeline-badge" style="background: linear-gradient(135deg, #10b981, #3b82f6); color: #fff; padding: 0.25rem 0.75rem; border-radius: 12px; font-size: 0.8rem;">2D</span>
                 </div>
                 <div id="video-overlay-wrapper" style="flex: 1; border-radius: 8px; overflow: hidden; margin-top: 1rem; position: relative; background: #000;">
-                    <video id="overlay-video" style="width: 100%; height: 100%; object-fit: contain;" muted></video>
-                    <canvas id="pose-canvas" style="position: absolute; top: 0; left: 0; width: 100%; height: 100%; pointer-events: none;"></canvas>
+                    <video id="overlay-video" style="width: 100%; height: 100%; object-fit: contain;" muted loop playsinline></video>
+                    <canvas id="pose-canvas" style="position: absolute; top: 0; left: 0; width: 100%; height: 100%; object-fit: contain; pointer-events: none;"></canvas>
                 </div>
                 <!-- Playback Controls for 2D -->
                 <div class="playback-controls" style="display: flex; align-items: center; gap: 1rem; margin-top: 1rem;">
@@ -246,85 +247,37 @@
             </div>
 
             <!-- Classification Badge -->
-            <div class="glass-card classification-card">
+            <div class="glass-card classification-card full-span">
                 <h3 class="card-title">Classification Tier</h3>
                 <div class="classification-content" style="display: flex; flex-direction: column; align-items: center; justify-content: center; height: 100%; text-align: center;">
                     <div id="tier-badge" class="tier-badge" style="font-size: 2rem; font-weight: 700; margin-bottom: 0.5rem; background: linear-gradient(135deg, #3b82f6, #8b5cf6); -webkit-background-clip: text; -webkit-text-fill-color: transparent;">--</div>
                     <div style="font-size: 1.2rem; color: var(--text-secondary);">Score: <span id="final-score" style="color: var(--text); font-weight: 600;">--</span> / 1.0</div>
                 </div>
             </div>
-
-            <!-- Walk Grade Badge -->
-            <div class="glass-card classification-card">
-                <h3 class="card-title">Walk Cycle Grade</h3>
-                <div class="classification-content" style="display: flex; flex-direction: column; align-items: center; justify-content: center; height: 100%; text-align: center;">
-                    <div id="walk-tier-badge" class="tier-badge" style="font-size: 2rem; font-weight: 700; margin-bottom: 0.5rem; background: linear-gradient(135deg, #10b981, #3b82f6); -webkit-background-clip: text; -webkit-text-fill-color: transparent;">--</div>
-                    <div style="font-size: 1.2rem; color: var(--text-secondary);">Score: <span id="walk-final-score" style="color: var(--text); font-weight: 600;">--</span> / 100</div>
-                </div>
-            </div>
-
             <!-- Biomechanics Metrics Grid -->
             <div class="glass-card metrics-card" style="grid-column: span 2;">
                 <h3 class="card-title">Biomechanical Analysis</h3>
                 <div class="metrics-grid" style="display: grid; grid-template-columns: repeat(auto-fit, minmax(180px, 1fr)); gap: 1.5rem; margin-top: 1.5rem;">
-                    
                     <div class="metric-item">
+                        <span class="info-icon" data-tooltip="Average height of the foot above the ground during the swing phase.">ℹ</span>
                         <span class="metric-label">Avg Foot Clearance (cm)</span>
                         <div id="metric-clearance" class="metric-value">--</div>
                     </div>
                     <div class="metric-item">
+                        <span class="info-icon" data-tooltip="Distance traveled during a single gait cycle (heel strike to heel strike).">ℹ</span>
                         <span class="metric-label" id="label-stride">Stride Length (m)</span>
                         <div id="metric-stride" class="metric-value">--</div>
                     </div>
                     <div class="metric-item">
+                        <span class="info-icon" data-tooltip="Forward velocity calculated from CoM displacement over time.">ℹ</span>
                         <span class="metric-label" id="label-speed">Walking Speed (m/s)</span>
                         <div id="metric-speed" class="metric-value">--</div>
                     </div>
                     <div class="metric-item">
+                        <span class="info-icon" data-tooltip="Vertical and lateral sway of the torso (Center of Mass). Lower is more stable.">ℹ</span>
                         <span class="metric-label" id="label-oscillation">Torso Oscillation (cm)</span>
                         <div id="metric-oscillation" class="metric-value">--</div>
                     </div>
-                    <div class="metric-item">
-                        <span class="metric-label">Smoothness (LDLJ)</span>
-                        <div id="metric-ldlj" class="metric-value">--</div>
-                    </div>
-                    <div class="metric-item">
-                        <span class="metric-label">Smoothness (SPARC)</span>
-                        <div id="metric-sparc" class="metric-value">--</div>
-                    </div>
-                    <div class="metric-item">
-                        <span class="metric-label">Symmetry Index</span>
-                        <div id="metric-symmetry" class="metric-value">--</div>
-                    </div>
-                    <div class="metric-item">
-                        <span class="metric-label">Periodicity</span>
-                        <div id="metric-periodicity" class="metric-value">--</div>
-                    </div>
-                    <div class="metric-item">
-                        <span class="metric-label">ROM Utilisation</span>
-                        <div id="metric-rom" class="metric-value">--</div>
-                    </div>
-                    <div class="metric-item">
-                        <span class="metric-label">Flight Time (s)</span>
-                        <div id="metric-flight" class="metric-value">--</div>
-                    </div>
-                    <div class="metric-item">
-                        <span class="metric-label">Peak Z Accel</span>
-                        <div id="metric-accel" class="metric-value">--</div>
-                    </div>
-                    <div class="metric-item">
-                        <span class="metric-label">Landing Jerk</span>
-                        <div id="metric-jerk" class="metric-value">--</div>
-                    </div>
-                    <div class="metric-item">
-                        <span class="metric-label">CoM Oscillation</span>
-                        <div id="metric-com" class="metric-value">--</div>
-                    </div>
-                    <div class="metric-item">
-                        <span class="metric-label">Transition Time (s)</span>
-                        <div id="metric-transition" class="metric-value">--</div>
-                    </div>
-
                 </div>
             </div>
         </section>

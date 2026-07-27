@@ -38,6 +38,9 @@ class RuleBasedClassifier:
         ideal_thresholds = get_tier_thresholds("Superhuman/Industrial", task)
         worst_thresholds = get_tier_thresholds("Experimental", task)
         
+        if metrics.get("fall_detected", 0.0) == 1.0 and task.lower() == "walking":
+            return 0.0, "Fall Detected"
+            
         total_score = 0.0
         total_weight = 0.0
         

@@ -30,7 +30,11 @@ CLASS_1_THRESHOLDS = {
     "peak_z_accel": {"ideal": 9.8, "acceptable": 2.0, "weight": 0.0},
     "landing_jerk": {"ideal": 50.0, "acceptable": 200.0, "weight": 0.0},
     "com_oscillation": {"ideal": 0.05, "acceptable": 0.3, "weight": 0.0},
-    "transition_time": {"ideal": 1.0, "acceptable": 3.0, "weight": 0.0}
+    "transition_time": {"ideal": 1.0, "acceptable": 3.0, "weight": 0.0},
+    "mean_clearance_cm": {"ideal": 8.0, "acceptable": 3.0, "weight": 0.0},
+    "stride_length_m": {"ideal": 0.6, "acceptable": 0.3, "weight": 0.0},
+    "speed_m_s": {"ideal": 1.5, "acceptable": 0.5, "weight": 0.0},
+    "torso_oscillation_cm": {"ideal": 2.0, "acceptable": 8.0, "weight": 0.0}
 }
 
 CLASS_2_THRESHOLDS = {
@@ -43,7 +47,11 @@ CLASS_2_THRESHOLDS = {
     "peak_z_accel": {"ideal": 5.0, "acceptable": 1.0, "weight": 0.0},
     "landing_jerk": {"ideal": 100.0, "acceptable": 300.0, "weight": 0.0},
     "com_oscillation": {"ideal": 0.1, "acceptable": 0.5, "weight": 0.0},
-    "transition_time": {"ideal": 2.0, "acceptable": 5.0, "weight": 0.0}
+    "transition_time": {"ideal": 2.0, "acceptable": 5.0, "weight": 0.0},
+    "mean_clearance_cm": {"ideal": 5.0, "acceptable": 2.0, "weight": 0.0},
+    "stride_length_m": {"ideal": 0.4, "acceptable": 0.15, "weight": 0.0},
+    "speed_m_s": {"ideal": 0.8, "acceptable": 0.2, "weight": 0.0},
+    "torso_oscillation_cm": {"ideal": 5.0, "acceptable": 12.0, "weight": 0.0}
 }
 
 CLASS_3_THRESHOLDS = {
@@ -56,17 +64,25 @@ CLASS_3_THRESHOLDS = {
     "peak_z_accel": {"ideal": 2.0, "acceptable": 0.5, "weight": 0.0},
     "landing_jerk": {"ideal": 200.0, "acceptable": 500.0, "weight": 0.0},
     "com_oscillation": {"ideal": 0.2, "acceptable": 0.8, "weight": 0.0},
-    "transition_time": {"ideal": 4.0, "acceptable": 10.0, "weight": 0.0}
+    "transition_time": {"ideal": 4.0, "acceptable": 10.0, "weight": 0.0},
+    "mean_clearance_cm": {"ideal": 2.0, "acceptable": 0.5, "weight": 0.0},
+    "stride_length_m": {"ideal": 0.2, "acceptable": 0.05, "weight": 0.0},
+    "speed_m_s": {"ideal": 0.3, "acceptable": 0.05, "weight": 0.0},
+    "torso_oscillation_cm": {"ideal": 10.0, "acceptable": 20.0, "weight": 0.0}
 }
 
 # Task-specific weight overrides
 TASK_WEIGHTS = {
     "walking": {
-        "smoothness_ldlj": 0.15,
-        "smoothness_sparc": 0.15,
-        "symmetry": 0.3,
-        "periodicity": 0.3,
-        "rom_utilisation": 0.1
+        "mean_clearance_cm": 0.25,
+        "stride_length_m": 0.25,
+        "speed_m_s": 0.25,
+        "torso_oscillation_cm": 0.25,
+        "smoothness_ldlj": 0.0,
+        "smoothness_sparc": 0.0,
+        "symmetry": 0.0,
+        "periodicity": 0.0,
+        "rom_utilisation": 0.0
     },
     "reaching": {
         "smoothness_ldlj": 0.3,

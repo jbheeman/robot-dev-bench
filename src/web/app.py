@@ -163,42 +163,17 @@ def _process_upload_task(job_id: str, tmp_name: str, filename: str, task: str,
                 view=camera_view,
             )
             
-            # Convert 2D pixel keypoints to pseudo-3D meters (Z=0) to reuse 3D metric extractors
-            # (Smoothness, SPARC, ROM) for manipulation tasks.
+            # We no longer calculate manipulation/jumping metrics for 2D.
             cm_per_px = walk_grade.get("cm_per_pixel", 0.0)
-            if cm_per_px > 0:
-                # scale to meters
-                poses_2d_m = pose_result.keypoints.copy() * (cm_per_px / 100.0)
-                # pad with Z=0 -> (T, J, 3)
-                poses_pseudo_3d = np.pad(poses_2d_m, ((0,0), (0,0), (0,1)), mode='constant')
-                
-                smoothness = compute_smoothness_3d(poses_pseudo_3d, fps)
-                sparc = compute_sparc_3d(poses_pseudo_3d, fps)
-                rom = compute_rom_3d(poses_pseudo_3d)
-            else:
-                smoothness = sparc = rom = {}
-
+            
             metrics = {
                 "walk_grade": walk_grade.get("walk_grade", 0.0),
                 "mean_clearance_cm": walk_grade.get("mean_clearance_cm", 0.0),
                 "stride_length_m": walk_grade.get("stride_length_m", 0.0),
                 "speed_m_s": walk_grade.get("speed_m_s", 0.0),
                 "torso_oscillation_cm": walk_grade.get("torso_oscillation_cm", 0.0),
+                "fall_detected": 1.0 if walk_grade.get("fall_detected", False) else 0.0,
                 "cm_per_pixel": walk_grade.get("cm_per_pixel", 0.0),
-                
-                # Biomechanics for manipulation (computed in 2D plane)
-                "smoothness_ldlj": smoothness.get("mean_ldlj", 0.0),
-                "smoothness_sparc": sparc.get("mean_sparc", 0.0),
-                "rom_utilisation": rom.get("mean_rom", 0.0),
-                
-                # Zero out depth-reliant 3D-only metrics
-                "symmetry": 0.0,
-                "periodicity": 0.0,
-                "flight_time": 0.0,
-                "peak_z_accel": 0.0,
-                "landing_jerk": 0.0,
-                "com_oscillation": 0.0,
-                "transition_time": 0.0,
             }
             metrics = _sanitize_floats(metrics)
 
@@ -233,34 +208,15 @@ def _process_upload_task(job_id: str, tmp_name: str, filename: str, task: str,
             poses_3d = pose_result.poses_3d
 
             # MotionBERT outputs dense predictions without NaNs, so we don't need a valid mask
-            # for interpolation. Temporal smoothing is also handled intrinsically by the neural network.
-            valid_mask = np.ones((poses_3d.shape[0], poses_3d.shape[1]), dtype=bool)
-
-            smoothness = compute_smoothness_3d(poses_3d, fps)
-            sparc = compute_sparc_3d(poses_3d, fps)
-            symmetry = compute_symmetry_3d(poses_3d)
-            periodicity = compute_periodicity_3d(poses_3d, fps)
-            rom = compute_rom_3d(poses_3d)
-            jumping = compute_jumping_metrics_3d(poses_3d, fps)
-            transition = compute_transition_metrics_3d(poses_3d, fps)
-            walk_grade = compute_walk_grade_3d(poses_3d, fps)
+            walk_grade = compute_walk_grade_3d(poses_3d, fps, keypoints_2d=pose_result.keypoints, confidence_2d=pose_result.confidence)
 
             metrics = {
-                "smoothness_ldlj": smoothness.get("mean_ldlj", 0.0),
-                "smoothness_sparc": sparc.get("mean_sparc", 0.0),
-                "symmetry": symmetry.get("mean_symmetry_index", 0.0),
-                "periodicity": periodicity.get("regularity_score", 0.0),
-                "rom_utilisation": rom.get("mean_rom", 0.0),
-                "flight_time": jumping.get("flight_time", 0.0),
-                "peak_z_accel": jumping.get("peak_z_accel", 0.0),
-                "landing_jerk": jumping.get("landing_jerk", 0.0),
-                "com_oscillation": transition.get("com_oscillation", 0.0),
-                "transition_time": transition.get("transition_time", 0.0),
                 "walk_grade": walk_grade.get("walk_grade", 0.0),
                 "mean_clearance_cm": walk_grade.get("mean_clearance_cm", 0.0),
                 "stride_length_m": walk_grade.get("stride_length_m", 0.0),
                 "speed_m_s": walk_grade.get("speed_m_s", 0.0),
                 "torso_oscillation_cm": walk_grade.get("torso_oscillation_cm", 0.0),
+                "fall_detected": 1.0 if walk_grade.get("fall_detected", False) else 0.0,
             }
             metrics = _sanitize_floats(metrics)
 
@@ -282,6 +238,11 @@ def _process_upload_task(job_id: str, tmp_name: str, filename: str, task: str,
                 "metrics": metrics,
                 "poses_3d": poses_3d_clean,
                 "valid_mask": valid_mask_clean,
+                "keypoints_2d": pose_result.keypoints.tolist(),
+                "confidence_2d": pose_result.confidence.tolist(),
+                "frame_width": pose_result.frame_width,
+                "frame_height": pose_result.frame_height,
+                "fps": fps,
                 "stereo_used": pose_result.stereo_used,
                 "classification": {
                     "score": score,

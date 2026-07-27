@@ -614,6 +614,8 @@ def compute_walk_grade_3d(
 def compute_walk_grade_3d(
     poses_3d: np.ndarray,
     fps: float,
+    keypoints_2d: Optional[np.ndarray] = None,
+    confidence_2d: Optional[np.ndarray] = None,
 ) -> Dict[str, Any]:
     """
     Grading the walking cycle of the robot based on clearance, stride symmetry, speed, and torso levelness.
@@ -633,8 +635,33 @@ def compute_walk_grade_3d(
     dt = 1.0 / fps
     poses = _interpolate_nans(poses_3d.copy())
     
-    # 1. Torso Levelness (10%)
+    # 1. Torso Levelness & Fall Detection (10%)
     pelvis_y = (poses[:, 11, 1] + poses[:, 12, 1]) / 2.0
+    lowest_ankle_y = np.minimum(poses[:, 15, 1], poses[:, 16, 1])
+    pelvis_clearance = pelvis_y - lowest_ankle_y
+    
+    # Filter out false falls from objects (like chairs) detected when person walks out of frame
+    fall_detected = False
+    
+    if keypoints_2d is not None and confidence_2d is not None:
+        # A real person will have > 0.3 mean confidence across all joints
+        valid_frames = np.mean(confidence_2d, axis=1) > 0.3
+        
+        # Check for teleportation (tracking switch to background object)
+        com_2d = np.nanmean(keypoints_2d, axis=1) # (T, 2)
+        dist = np.linalg.norm(np.diff(com_2d, axis=0), axis=1)
+        dist = np.insert(dist, 0, 0.0) # pad to length T
+        
+        # If the tracking center shifts > 150 pixels in one frame, it's a tracking switch.
+        # We invalidate that frame and ALL subsequent frames!
+        has_teleported = np.cumsum(dist > 150.0) > 0
+        valid_frames = valid_frames & (~has_teleported)
+        
+        if np.any(valid_frames):
+            fall_detected = bool(np.min(pelvis_clearance[valid_frames]) < 0.2)
+    else:
+        fall_detected = bool(np.min(pelvis_clearance) < 0.2)
+    
     torso_oscillation = np.std(pelvis_y)
     
     torso_score = 100.0
@@ -746,6 +773,7 @@ def compute_walk_grade_3d(
         "symmetry_score": float(symmetry_score),
         "speed_score": float(speed_score),
         "torso_score": float(torso_score),
+        "fall_detected": fall_detected
     }
 
 
@@ -812,6 +840,7 @@ def compute_walk_grade_2d(
         "speed_score": 0.0,
         "torso_score": 0.0,
         "cm_per_pixel": 0.0,
+        "fall_detected": False,
     }
     if T < 10 or fps <= 0:
         return empty
@@ -864,8 +893,29 @@ def compute_walk_grade_2d(
     # ── 1. Torso Levelness & Sway (10-40%) ──
     # Average Y of left and right hip across frames
     hip_y = (kp_cm[:, _COCO_L_HIP, 1] + kp_cm[:, _COCO_R_HIP, 1]) / 2.0
+    lowest_ankle_y = np.maximum(kp_cm[:, _COCO_L_ANKLE, 1], kp_cm[:, _COCO_R_ANKLE, 1])
+    pelvis_clearance = lowest_ankle_y - hip_y
+    
+    # Filter out false falls from background objects tracking
+    valid_frames = np.mean(confidence, axis=1) > 0.3
+    
+    # Check for teleportation (tracking switch to background object)
+    com_2d = np.nanmean(keypoints, axis=1) # (T, 2)
+    dist = np.linalg.norm(np.diff(com_2d, axis=0), axis=1)
+    dist = np.insert(dist, 0, 0.0) # pad to length T
+    
+    # If the tracking center shifts > 150 pixels in one frame, it's a tracking switch.
+    # We invalidate that frame and ALL subsequent frames!
+    has_teleported = np.cumsum(dist > 150.0) > 0
+    valid_frames = valid_frames & (~has_teleported)
+    
+    if np.any(valid_frames):
+        fall_detected = bool(np.min(pelvis_clearance[valid_frames]) < 20.0)
+    else:
+        fall_detected = False
+    
     torso_osc_cm = float(np.std(hip_y))
-
+    
     torso_score = 100.0
     # > 2cm oscillation starts penalty; > 5cm = 0
     if torso_osc_cm > 2.0:
@@ -1013,6 +1063,7 @@ def compute_walk_grade_2d(
         "speed_score": float(speed_score),
         "torso_score": float(torso_score),
         "sway_score": float(sway_score),
-        "cm_per_pixel": cm_per_px,
+        "cm_per_pixel": float(cm_per_px),
+        "fall_detected": fall_detected,
         "status": "ok",
     }

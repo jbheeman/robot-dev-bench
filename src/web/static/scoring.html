@@ -1,0 +1,100 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Scoring Explained | Unitree G1-Edu</title>
+    <!-- Google Fonts for modern typography -->
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Outfit:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="style.css">
+</head>
+<body>
+    <div class="background-elements">
+        <div class="glow-orb orb-1"></div>
+        <div class="glow-orb orb-2"></div>
+        <div class="glow-orb orb-3"></div>
+    </div>
+
+    <main class="dashboard-container" style="max-width: 1000px;">
+        <header class="dashboard-header">
+            <div>
+                <h1 class="gradient-text">Scoring Explained</h1>
+                <p class="subtitle">How biomechanical metrics are calculated and weighed</p>
+            </div>
+            <div style="margin-top: 1rem;">
+                <a href="/" style="padding: 0.5rem 1rem; background: rgba(255,255,255,0.05); color: var(--text-secondary); border-radius: 8px; text-decoration: none; font-weight: 500; border: 1px solid rgba(255,255,255,0.1);">← Back to Dashboard</a>
+            </div>
+        </header>
+
+        <section class="glass-card full-span" style="margin-bottom: 2rem;">
+            <h3 class="card-title">Score Calculation</h3>
+            <p style="color: var(--text-secondary); line-height: 1.6; margin-bottom: 1rem; font-size: 1.1rem;">
+                The overall score is a weighted average of individual metric scores, normalized between <strong style="color: var(--text);">0.0 (Experimental)</strong> and <strong style="color: var(--text);">1.0 (Superhuman/Industrial)</strong>.
+            </p>
+            <p style="color: var(--text-secondary); line-height: 1.6; font-size: 1.1rem;">
+                For each metric, we define an <em style="color: var(--primary);">Ideal</em> bound and an <em style="color: #ef4444;">Acceptable</em> bound. The actual measured value is linearly interpolated between these two bounds. If a metric exceeds the ideal bound, it is capped at 1.0. If it falls below the acceptable bound, it receives a 0.0.
+            </p>
+        </section>
+
+        <section class="glass-card full-span">
+            <h3 class="card-title">Task-Specific Weights</h3>
+            <p style="color: var(--text-secondary); line-height: 1.6; margin-bottom: 2rem; font-size: 1.1rem;">
+                Metrics are weighed differently depending on the selected task, dynamically tailoring the evaluation.
+            </p>
+
+            <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(280px, 1fr)); gap: 1.5rem;">
+                <!-- Walking -->
+                <div class="metric-item" style="padding: 1.5rem;">
+                    <h4 style="color: white; margin-bottom: 1rem; font-size: 1.3rem; font-weight: 600;">Walking</h4>
+                    <ul style="color: var(--text-secondary); list-style: none; padding: 0; display: flex; flex-direction: column; gap: 0.5rem;">
+                        <li style="display: flex; justify-content: space-between;"><span>Avg Foot Clearance</span> <strong style="color: white;">25%</strong></li>
+                        <li style="display: flex; justify-content: space-between;"><span>Stride Length</span> <strong style="color: white;">25%</strong></li>
+                        <li style="display: flex; justify-content: space-between;"><span>Walking Speed</span> <strong style="color: white;">25%</strong></li>
+                        <li style="display: flex; justify-content: space-between;"><span>Torso Oscillation</span> <strong style="color: white;">25%</strong></li>
+                    </ul>
+                </div>
+                <!-- Reaching -->
+                <div class="metric-item" style="padding: 1.5rem;">
+                    <h4 style="color: white; margin-bottom: 1rem; font-size: 1.3rem; font-weight: 600;">Reaching</h4>
+                    <ul style="color: var(--text-secondary); list-style: none; padding: 0; display: flex; flex-direction: column; gap: 0.5rem;">
+                        <li style="display: flex; justify-content: space-between;"><span>Smoothness (LDLJ)</span> <strong style="color: white;">30%</strong></li>
+                        <li style="display: flex; justify-content: space-between;"><span>Smoothness (SPARC)</span> <strong style="color: white;">30%</strong></li>
+                        <li style="display: flex; justify-content: space-between;"><span>Range of Motion</span> <strong style="color: white;">30%</strong></li>
+                        <li style="display: flex; justify-content: space-between;"><span>Symmetry</span> <strong style="color: white;">10%</strong></li>
+                    </ul>
+                </div>
+                <!-- Manipulation -->
+                <div class="metric-item" style="padding: 1.5rem;">
+                    <h4 style="color: white; margin-bottom: 1rem; font-size: 1.3rem; font-weight: 600;">Manipulation</h4>
+                    <ul style="color: var(--text-secondary); list-style: none; padding: 0; display: flex; flex-direction: column; gap: 0.5rem;">
+                        <li style="display: flex; justify-content: space-between;"><span>Range of Motion</span> <strong style="color: white;">50%</strong></li>
+                        <li style="display: flex; justify-content: space-between;"><span>Smoothness (LDLJ)</span> <strong style="color: white;">25%</strong></li>
+                        <li style="display: flex; justify-content: space-between;"><span>Smoothness (SPARC)</span> <strong style="color: white;">25%</strong></li>
+                    </ul>
+                </div>
+                <!-- Jumping -->
+                <div class="metric-item" style="padding: 1.5rem;">
+                    <h4 style="color: white; margin-bottom: 1rem; font-size: 1.3rem; font-weight: 600;">Jumping</h4>
+                    <ul style="color: var(--text-secondary); list-style: none; padding: 0; display: flex; flex-direction: column; gap: 0.5rem;">
+                        <li style="display: flex; justify-content: space-between;"><span>Flight Time</span> <strong style="color: white;">40%</strong></li>
+                        <li style="display: flex; justify-content: space-between;"><span>Peak Z-Accel</span> <strong style="color: white;">30%</strong></li>
+                        <li style="display: flex; justify-content: space-between;"><span>Landing Jerk</span> <strong style="color: white;">30%</strong></li>
+                    </ul>
+                </div>
+                <!-- Transitions -->
+                <div class="metric-item" style="padding: 1.5rem;">
+                    <h4 style="color: white; margin-bottom: 1rem; font-size: 1.3rem; font-weight: 600;">Transitions</h4>
+                    <ul style="color: var(--text-secondary); list-style: none; padding: 0; display: flex; flex-direction: column; gap: 0.5rem;">
+                        <li style="display: flex; justify-content: space-between;"><span>CoM Oscillation</span> <strong style="color: white;">50%</strong></li>
+                        <li style="display: flex; justify-content: space-between;"><span>Transition Time</span> <strong style="color: white;">30%</strong></li>
+                        <li style="display: flex; justify-content: space-between;"><span>Smoothness (LDLJ)</span> <strong style="color: white;">10%</strong></li>
+                        <li style="display: flex; justify-content: space-between;"><span>Smoothness (SPARC)</span> <strong style="color: white;">10%</strong></li>
+                    </ul>
+                </div>
+            </div>
+        </section>
+    </main>
+</body>
+</html>

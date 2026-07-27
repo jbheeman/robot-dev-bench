@@ -405,42 +405,12 @@ document.addEventListener('DOMContentLoaded', () => {
             // Update Metrics Grid
             if (resultData.metrics) {
                 // Populate Walk Grade
-                const walkScore = resultData.metrics.walk_grade;
-                const walkScoreEl = document.getElementById('walk-final-score');
-                const walkBadgeEl = document.getElementById('walk-tier-badge');
-                if (walkScoreEl && walkScore !== undefined) {
-                    walkScoreEl.textContent = parseFloat(walkScore).toFixed(1);
-                    if (walkScore >= 90) {
-                        walkBadgeEl.textContent = 'A';
-                        walkBadgeEl.style.background = 'linear-gradient(135deg, #10b981, #3b82f6)';
-                    } else if (walkScore >= 80) {
-                        walkBadgeEl.textContent = 'B';
-                        walkBadgeEl.style.background = 'linear-gradient(135deg, #3b82f6, #8b5cf6)';
-                    } else if (walkScore >= 70) {
-                        walkBadgeEl.textContent = 'C';
-                        walkBadgeEl.style.background = 'linear-gradient(135deg, #f59e0b, #ef4444)';
-                    } else {
-                        walkBadgeEl.textContent = 'D';
-                        walkBadgeEl.style.background = 'linear-gradient(135deg, #ef4444, #7f1d1d)';
-                    }
-                    walkBadgeEl.style.webkitBackgroundClip = 'text';
-                }
 
                 const metricMap = {
                     'metric-clearance': resultData.metrics.mean_clearance_cm,
                     'metric-stride': resultData.metrics.stride_length_m,
                     'metric-speed': resultData.metrics.speed_m_s,
-                    'metric-oscillation': resultData.metrics.torso_oscillation_cm,
-                    'metric-ldlj': resultData.metrics.smoothness_ldlj,
-                    'metric-sparc': resultData.metrics.smoothness_sparc,
-                    'metric-symmetry': resultData.metrics.symmetry,
-                    'metric-periodicity': resultData.metrics.periodicity,
-                    'metric-rom': resultData.metrics.rom_utilisation,
-                    'metric-flight': resultData.metrics.flight_time,
-                    'metric-accel': resultData.metrics.peak_z_accel,
-                    'metric-jerk': resultData.metrics.landing_jerk,
-                    'metric-com': resultData.metrics.com_oscillation,
-                    'metric-transition': resultData.metrics.transition_time
+                    'metric-oscillation': resultData.metrics.torso_oscillation_cm
                 };
                 
                 // Update dynamic labels if front view
@@ -465,9 +435,11 @@ document.addEventListener('DOMContentLoaded', () => {
                 document.querySelectorAll('.metric-item').forEach(el => el.style.display = 'none');
 
                 const relevantMetrics = {
-                    'walk': ['metric-clearance', 'metric-stride', 'metric-speed', 'metric-oscillation', 'metric-ldlj', 'metric-sparc', 'metric-symmetry', 'metric-periodicity', 'metric-rom'],
-                    'jump': ['metric-flight', 'metric-accel', 'metric-jerk', 'metric-com', 'metric-transition', 'metric-ldlj', 'metric-sparc', 'metric-rom'],
-                    'manipulation': ['metric-ldlj', 'metric-sparc', 'metric-rom'],
+                    'walking': ['metric-clearance', 'metric-stride', 'metric-speed', 'metric-oscillation'],
+                    'jumping': [],
+                    'manipulation': [],
+                    'reaching': [],
+                    'transitions': [],
                     'general': Object.keys(metricMap) // show all for general
                 };
 
@@ -490,28 +462,28 @@ document.addEventListener('DOMContentLoaded', () => {
             if (resultData.pipeline_mode === '2d') {
                 viewer2d.style.display = 'flex';
                 viewer3d.style.display = 'none';
-
-                // Load 2D overlay
-                if (resultData.keypoints_2d && window.load2DOverlay) {
-                    // Pass the uploaded file as the video source
-                    window.load2DOverlay(
-                        uploadFile,
-                        resultData.keypoints_2d,
-                        resultData.confidence_2d,
-                        resultData.frame_width,
-                        resultData.frame_height,
-                        resultData.fps || 30,
-                        resultData.stereo_used
-                    );
-                }
             } else {
-                viewer2d.style.display = 'none';
+                viewer2d.style.display = 'flex'; // ALWAYS show 2D side-by-side if data is available
                 viewer3d.style.display = 'flex';
 
                 // Load 3D Playback Data
                 if (resultData.poses_3d && window.loadPlaybackData) {
                     window.loadPlaybackData(resultData.poses_3d, resultData.valid_mask);
                 }
+            }
+
+            // Always load 2D overlay if we have the data, regardless of 3D mode
+            if (resultData.keypoints_2d && window.load2DOverlay) {
+                // Pass the uploaded file as the video source
+                window.load2DOverlay(
+                    uploadFile,
+                    resultData.keypoints_2d,
+                    resultData.confidence_2d,
+                    resultData.frame_width,
+                    resultData.frame_height,
+                    resultData.fps || 30,
+                    resultData.stereo_used
+                );
             }
 
             loadingOverlay.classList.add('hidden');
@@ -552,11 +524,6 @@ document.addEventListener('DOMContentLoaded', () => {
         const canvas = document.getElementById('pose-canvas');
         const timeline = document.getElementById('timeline-2d');
 
-        // Load video
-        const url = URL.createObjectURL(videoFile);
-        video.src = url;
-        video.load();
-
         timeline.max = keypoints.length - 1;
         timeline.value = 0;
 
@@ -566,10 +533,19 @@ document.addEventListener('DOMContentLoaded', () => {
             drawPoseFrame(0);
         }, { once: true });
 
+        // Load video after attaching listener to prevent race conditions
+        const url = URL.createObjectURL(videoFile);
+        video.src = url;
+        video.load();
+
         // Play / Pause / Scrub
         document.getElementById('play-2d-btn').onclick = () => {
-            video.play();
+            const playPromise = video.play();
+            if (playPromise !== undefined) {
+                playPromise.catch(e => console.warn("Video play failed (codec issue?):", e));
+            }
             overlay2dPlaying = true;
+            window.last2DTime = Date.now();
             animate2DOverlay();
         };
         document.getElementById('pause-2d-btn').onclick = () => {
@@ -580,6 +556,7 @@ document.addEventListener('DOMContentLoaded', () => {
         timeline.addEventListener('input', (e) => {
             const f = parseInt(e.target.value);
             overlay2dFrame = f;
+            window.virtualTime2D = f / overlay2dData.fps;
             // Seek the video to the matching time
             if (overlay2dData) {
                 video.currentTime = f / overlay2dData.fps;
@@ -590,7 +567,12 @@ document.addEventListener('DOMContentLoaded', () => {
         // Sync overlay to video time
         video.addEventListener('timeupdate', () => {
             if (!overlay2dData) return;
-            const f = Math.round(video.currentTime * overlay2dData.fps);
+            let f = 0;
+            if (video.duration && video.duration > 0 && isFinite(video.duration)) {
+                f = Math.round((video.currentTime / video.duration) * (overlay2dData.keypoints.length - 1));
+            } else {
+                f = Math.round(video.currentTime * overlay2dData.fps);
+            }
             if (f >= 0 && f < overlay2dData.keypoints.length) {
                 overlay2dFrame = f;
                 timeline.value = f;
@@ -606,7 +588,29 @@ document.addEventListener('DOMContentLoaded', () => {
             const video = document.getElementById('overlay-video');
             const timeline = document.getElementById('timeline-2d');
             if (video) {
-                const f = Math.round(video.currentTime * overlay2dData.fps);
+                let f = 0;
+                if (video.videoWidth > 0 && !video.error) {
+                    // Browser can decode video natively
+                    if (video.duration && video.duration > 0 && isFinite(video.duration)) {
+                        f = Math.round((video.currentTime / video.duration) * (overlay2dData.keypoints.length - 1));
+                    } else {
+                        f = Math.round(video.currentTime * overlay2dData.fps);
+                    }
+                } else {
+                    // Fallback for unsupported codecs (HEVC etc.)
+                    if (window.virtualTime2D === undefined) window.virtualTime2D = 0;
+                    const now = Date.now();
+                    if (!window.last2DTime) window.last2DTime = now;
+                    const dt = (now - window.last2DTime) / 1000.0;
+                    window.last2DTime = now;
+                    
+                    window.virtualTime2D += dt;
+                    f = Math.round(window.virtualTime2D * overlay2dData.fps);
+                    if (f >= overlay2dData.keypoints.length) {
+                        window.virtualTime2D = 0;
+                        f = 0;
+                    }
+                }
                 if (f >= 0 && f < overlay2dData.keypoints.length && f !== overlay2dFrame) {
                     overlay2dFrame = f;
                     if (timeline) timeline.value = f;
@@ -623,6 +627,23 @@ document.addEventListener('DOMContentLoaded', () => {
         const canvas = document.getElementById('pose-canvas');
         const video = document.getElementById('overlay-video');
         if (!canvas || !video) return;
+
+        // Ensure canvas dimensions match video dimensions on every frame in case loadedmetadata fired early
+        if (video.videoWidth > 0 && video.videoHeight > 0) {
+            if (canvas.width !== video.videoWidth || canvas.height !== video.videoHeight) {
+                canvas.width = video.videoWidth;
+                canvas.height = video.videoHeight;
+            }
+        } else if (canvas.width === 0 && overlay2dData.frameW > 0) {
+            // Fallback: If video cannot be decoded by browser (e.g. HEVC), videoWidth is 0.
+            // Size the canvas to OpenCV's extracted dimensions so the skeleton still draws.
+            canvas.width = overlay2dData.frameW;
+            canvas.height = overlay2dData.frameH;
+        }
+        
+        // Prevent drawing if dimensions are invalid
+        if (canvas.width === 0 || canvas.height === 0 || !overlay2dData.frameW) return;
+
         const ctx = canvas.getContext('2d');
 
         // Scale from original video coords to canvas coords

@@ -758,19 +758,87 @@ body {
 }
 
 .metric-item {
-    background: rgba(255, 255, 255, 0.03);
-    border: 1px solid rgba(255, 255, 255, 0.05);
-    border-radius: 12px;
-    padding: 1.2rem;
+    background: rgba(255,255,255,0.02);
+    border: 1px solid rgba(255,255,255,0.05);
+    border-radius: 8px;
+    padding: 1rem;
     display: flex;
     flex-direction: column;
     gap: 0.5rem;
-    transition: transform 0.2s, background 0.2s;
+    transition: all 0.2s ease;
+    position: relative;
 }
 
 .metric-item:hover {
+    background: rgba(255,255,255,0.05);
     transform: translateY(-2px);
-    background: rgba(255, 255, 255, 0.06);
+    box-shadow: 0 4px 12px rgba(0,0,0,0.1);
+}
+
+.info-icon {
+    position: absolute;
+    top: 8px;
+    right: 12px;
+    cursor: help;
+    color: var(--text-secondary);
+    font-size: 1rem;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    border: 1px solid rgba(255,255,255,0.2);
+    border-radius: 50%;
+    width: 20px;
+    height: 20px;
+    font-style: normal;
+    font-weight: bold;
+    opacity: 0.6;
+    transition: opacity 0.2s;
+}
+
+.info-icon::after {
+    content: attr(data-tooltip);
+    position: absolute;
+    bottom: 140%;
+    left: 50%;
+    transform: translateX(-50%);
+    background: rgba(15, 23, 42, 0.95);
+    border: 1px solid rgba(255, 255, 255, 0.2);
+    backdrop-filter: blur(8px);
+    color: white;
+    padding: 0.5rem 0.75rem;
+    border-radius: 6px;
+    font-size: 0.8rem;
+    font-weight: 500;
+    white-space: nowrap;
+    opacity: 0;
+    visibility: hidden;
+    transition: all 0.2s ease;
+    z-index: 100;
+    box-shadow: 0 4px 12px rgba(0,0,0,0.3);
+}
+
+.info-icon::before {
+    content: '';
+    position: absolute;
+    bottom: 100%;
+    left: 50%;
+    transform: translateX(-50%);
+    border: 6px solid transparent;
+    border-top-color: rgba(255, 255, 255, 0.2);
+    opacity: 0;
+    visibility: hidden;
+    transition: all 0.2s ease;
+}
+
+.info-icon:hover {
+    opacity: 1;
+    color: white;
+    border-color: rgba(255,255,255,0.6);
+}
+
+.info-icon:hover::after, .info-icon:hover::before {
+    opacity: 1;
+    visibility: visible;
 }
 
 .metric-label {

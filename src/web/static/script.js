@@ -437,8 +437,6 @@ document.addEventListener('DOMContentLoaded', () => {
                 const relevantMetrics = {
                     'walking': ['metric-clearance', 'metric-stride', 'metric-speed', 'metric-oscillation'],
                     'jumping': [],
-                    'manipulation': [],
-                    'reaching': [],
                     'transitions': [],
                     'general': Object.keys(metricMap) // show all for general
                 };

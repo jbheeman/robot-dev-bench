@@ -84,20 +84,7 @@ TASK_WEIGHTS = {
         "periodicity": 0.0,
         "rom_utilisation": 0.0
     },
-    "reaching": {
-        "smoothness_ldlj": 0.3,
-        "smoothness_sparc": 0.3,
-        "symmetry": 0.1,
-        "periodicity": 0.0,  # Not periodic
-        "rom_utilisation": 0.3
-    },
-    "manipulation": {
-        "smoothness_ldlj": 0.25,
-        "smoothness_sparc": 0.25,
-        "symmetry": 0.0,
-        "periodicity": 0.0,
-        "rom_utilisation": 0.5
-    },
+
     "jumping": {
         "flight_time": 0.4,
         "peak_z_accel": 0.3,

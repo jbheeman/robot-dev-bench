@@ -170,8 +170,8 @@ def _try_import_mmdet():
 # ── Model configuration ─────────────────────────────────────────────────────
 
 # Default ViTPose++ config and checkpoint (downloaded on first use)
-# Using the huge variant for maximum accuracy.
-_DEFAULT_POSE_CONFIG = "td-hm_ViTPose-huge_8xb64-210e_coco-256x192"
+# Using the base variant for a good balance of accuracy and speed.
+_DEFAULT_POSE_CONFIG = "td-hm_ViTPose-base_8xb64-210e_coco-256x192"
 _DEFAULT_DET_CONFIG = "rtmdet_m_8xb32-300e_coco"
 
 # Model cache directory
@@ -241,8 +241,10 @@ class PoseEstimator:
 
         # Initialise pose model
         logger.info("Loading ViTPose++ pose model …")
-        pose_config = self._resolve_config("mmpose", _DEFAULT_POSE_CONFIG)
-        pose_checkpoint = self._resolve_checkpoint("mmpose", _DEFAULT_POSE_CONFIG)
+        pose_config_name = _DEFAULT_POSE_CONFIG
+        pose_checkpoint = self._resolve_checkpoint("mmpose", pose_config_name)
+
+        pose_config = self._resolve_config("mmpose", pose_config_name)
         self._pose_model = init_pose(
             pose_config, 
             pose_checkpoint, 
@@ -303,19 +305,17 @@ class PoseEstimator:
         For now, returns the model zoo URL — MMPose/MMDet will download it
         automatically on first use.
         """
-        # Check if a custom fine-tuned humanoid checkpoint exists
-        if model_name == _DEFAULT_POSE_CONFIG:
-            custom_ckpt = os.path.join(_MODEL_CACHE, "vitpose_humanoid.pth")
-            if os.path.exists(custom_ckpt):
-                import logging
-                logging.getLogger(__name__).info(f"Loading custom fine-tuned checkpoint: {custom_ckpt}")
-                return custom_ckpt
+
 
         # The checkpoint URLs for our default models
         checkpoints = {
             "rtmdet_m_8xb32-300e_coco": (
                 "https://download.openmmlab.com/mmdetection/v3.0/"
                 "rtmdet/rtmdet_m_8xb32-300e_coco/rtmdet_m_8xb32-300e_coco_20220719_112220-229f527c.pth"
+            ),
+            "td-hm_ViTPose-base_8xb64-210e_coco-256x192": (
+                "https://download.openmmlab.com/mmpose/v1/body_2d_keypoint/topdown_heatmap/"
+                "coco/td-hm_ViTPose-base_8xb64-210e_coco-256x192-216eae50_20230314.pth"
             ),
             "td-hm_ViTPose-huge_8xb64-210e_coco-256x192": (
                 "https://download.openmmlab.com/mmpose/v1/body_2d_keypoint/topdown_heatmap/"
@@ -355,6 +355,8 @@ class PoseEstimator:
         from .lifter import _HERE
         if morphology == "g1_retrained":
             ckpt = os.path.join(_HERE, "..", "..", "checkpoints", "motionagformer-s-g1.pth.tr")
+        elif morphology == "g1":
+            ckpt = os.path.join(_HERE, "..", "..", "checkpoints", "motionagformer-b-g1", "best_epoch.pth.tr")
         else:
             ckpt = os.path.join(_HERE, "..", "..", "checkpoints", "motionagformer-s-h36m.pth.tr")
         self._lifter.load_checkpoint(ckpt)

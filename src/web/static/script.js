@@ -294,10 +294,6 @@ document.addEventListener('DOMContentLoaded', () => {
             if (taskSelect) {
                 formData.append('task', taskSelect.value);
             }
-            const morphSelect = document.getElementById('morphology-select');
-            if (morphSelect) {
-                formData.append('morphology', morphSelect.value);
-            }
 
             // Stereo settings
             if (stereoToggle.checked) {

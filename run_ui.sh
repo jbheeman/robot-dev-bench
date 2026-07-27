@@ -1,18 +1,13 @@
 #!/bin/bash
 
-echo "Starting BPS API Backend on port 8000..."
+echo "Starting AV Backend on port 3000..."
 export PYTHONPATH=$(pwd)
-python src/web/bps_api.py &
+python src/web/app.py &
 BACKEND_PID=$!
 
-echo "Starting Web UI Frontend on port 4000..."
-# Using Python's built-in HTTP server to host the static files
-python -m http.server 4000 --directory web-ui/ &
-FRONTEND_PID=$!
+echo "Server is running."
+echo "Access the UI at: http://localhost:3000"
+echo "Press Ctrl+C to stop the server."
 
-echo "Both servers are running."
-echo "Access the UI at: http://localhost:4000"
-echo "Press Ctrl+C to stop both servers."
-
-trap "kill $BACKEND_PID $FRONTEND_PID" SIGINT
+trap "kill $BACKEND_PID" SIGINT
 wait

@@ -1,14 +1,15 @@
-"""MotionAGFormer-S 2D->3D lifter, wrapped behind a small, swappable interface.
+"""MotionAGFormer 2D->3D lifter, wrapped behind a small, swappable interface.
 
 The rest of the app only needs `Lifter.lift(window) -> (17,3)`. This module owns
 the messy details: vendoring the MotionAGFormer source from third_party/, the
-exact -S hyperparameters, stripping the DataParallel `module.` prefix, and
+exact hyperparameters, stripping the DataParallel `module.` prefix, and
 picking a working torch device.
 """
 
 from __future__ import annotations
 
 import os
+import re
 import sys
 
 import numpy as np
@@ -18,6 +19,15 @@ _HERE = os.path.dirname(os.path.abspath(__file__))
 _REPO = os.path.join(_HERE, "..", "..", "third_party", "MotionAGFormer")
 _CKPT = os.path.join(_HERE, "..", "..", "checkpoints", "motionagformer-b-g1", "best_epoch.pth.tr")
 
+# MotionAGFormer-Small, from configs/h36m/MotionAGFormer-small.yaml
+S_CONFIG = dict(
+    n_layers=26, dim_in=3, dim_feat=64, dim_rep=512, dim_out=3, mlp_ratio=4,
+    num_heads=8, n_frames=81, use_temporal_similarity=True, neighbour_num=2,
+    use_tcn=False, graph_only=False, hierarchical=False,
+    use_adaptive_fusion=True, use_layer_scale=True,
+    layer_scale_init_value=1e-5, qkv_bias=False,
+)
+
 # MotionAGFormer-Base (G1), from configs/h36m/MotionAGFormer-base.yaml
 B_CONFIG = dict(
     n_layers=16, dim_in=3, dim_feat=128, dim_rep=512, dim_out=3, mlp_ratio=4,
@@ -26,6 +36,8 @@ B_CONFIG = dict(
     use_adaptive_fusion=True, use_layer_scale=True,
     layer_scale_init_value=1e-5, qkv_bias=False,
 )
+
+# Default n_frames for the default checkpoint
 N_FRAMES = B_CONFIG["n_frames"]
 
 
@@ -51,8 +63,41 @@ def resolve_device(prefer: str = "auto") -> torch.device:
     return torch.device("cpu")
 
 
+def _detect_arch_from_state_dict(sd: dict) -> dict:
+    """Infer the MotionAGFormer architecture config from checkpoint keys.
+
+    We determine the number of layers from the highest `layers.N.` index and
+    the feature dimension from the `pos_embed` tensor shape.
+    """
+    layer_indices = set()
+    for k in sd.keys():
+        m = re.match(r"layers\.(\d+)\.", k)
+        if m:
+            layer_indices.add(int(m.group(1)))
+
+    n_layers = len(layer_indices) if layer_indices else 16
+    dim_feat = sd["pos_embed"].shape[-1] if "pos_embed" in sd else 128
+
+    # Match against known configs
+    if n_layers == 26 and dim_feat == 64:
+        return S_CONFIG
+    elif n_layers == 16 and dim_feat == 128:
+        return B_CONFIG
+    else:
+        # Build a custom config from what we can infer
+        cfg = dict(B_CONFIG)
+        cfg["n_layers"] = n_layers
+        cfg["dim_feat"] = dim_feat
+        # Infer n_frames from GCN nodes if available
+        if n_layers <= 26 and dim_feat <= 64:
+            cfg["n_frames"] = 81
+        else:
+            cfg["n_frames"] = 243
+        return cfg
+
+
 class Lifter:
-    """Loads MotionAGFormer-S and lifts a window of 2D H36M keypoints to 3D."""
+    """Loads MotionAGFormer and lifts a window of 2D H36M keypoints to 3D."""
 
     def __init__(self, checkpoint: str = _CKPT, device: str = "auto"):
         if _REPO not in sys.path:
@@ -60,14 +105,20 @@ class Lifter:
         # Allow MPS to fall back to CPU for any unimplemented op rather than error.
         os.environ.setdefault("PYTORCH_ENABLE_MPS_FALLBACK", "1")
 
-        from model.MotionAGFormer import MotionAGFormer  # noqa: E402
-
         self.device = resolve_device(device)
-        self.model = MotionAGFormer(**B_CONFIG)
+        self._current_config = None
+        self._current_ckpt = None
+        self.model = None
         self.load_checkpoint(checkpoint)
         
+    def _build_model(self, config: dict):
+        """(Re)create the MotionAGFormer model with the given architecture config."""
+        from model.MotionAGFormer import MotionAGFormer  # noqa: E402
+        self._current_config = config
+        self.model = MotionAGFormer(**config)
+
     def load_checkpoint(self, checkpoint: str) -> None:
-        if hasattr(self, "_current_ckpt") and self._current_ckpt == checkpoint:
+        if self._current_ckpt == checkpoint:
             return
         if not os.path.isfile(checkpoint):
             raise FileNotFoundError(f"checkpoint not found: {checkpoint}")
@@ -76,12 +127,22 @@ class Lifter:
         # Strip the DataParallel prefix the released weights were saved with.
         sd = {k[len("module."):] if k.startswith("module.") else k: v
               for k, v in sd.items()}
+
+        # Detect what architecture the checkpoint expects
+        needed_config = _detect_arch_from_state_dict(sd)
+
+        # Rebuild the model if the architecture changed or this is the first load
+        if self.model is None or self._current_config != needed_config:
+            self._build_model(needed_config)
+
         self.model.load_state_dict(sd, strict=True)
         self.model.eval().to(self.device)
         self._current_ckpt = checkpoint
 
     @property
     def n_frames(self) -> int:
+        if self._current_config is not None:
+            return self._current_config["n_frames"]
         return N_FRAMES
 
     @torch.no_grad()
@@ -107,7 +168,7 @@ class Lifter:
 
 def _selftest():
     lifter = Lifter()
-    print(f"Lifter loaded MotionAGFormer-S on {lifter.device}, T={lifter.n_frames}")
+    print(f"Lifter loaded MotionAGFormer on {lifter.device}, T={lifter.n_frames}")
     win = np.zeros((1, N_FRAMES, 17, 3), dtype=np.float32)
     win[..., 2] = 1.0  # full confidence
     # a tiny bit of structure so it isn't degenerate
@@ -121,3 +182,4 @@ def _selftest():
 
 if __name__ == "__main__":
     _selftest()
+

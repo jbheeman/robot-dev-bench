@@ -22,3 +22,6 @@ pytest
 fastapi
 uvicorn
 python-multipart
+yt-dlp
+opencv-python
+timm

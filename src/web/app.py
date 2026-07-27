@@ -113,7 +113,7 @@ def _sanitize_floats(value):
 
 def _process_upload_task(job_id: str, tmp_name: str, filename: str, task: str,
                          stereo: bool = False, baseline: float = 60.0,
-                         focal_length: float = 800.0, morphology: str = "g1"):
+                         focal_length: float = 800.0):
     try:
         mode_label = "stereo" if stereo else "mono"
         logger.info(f"Received {mode_label} AV payload. Camera: {filename}")
@@ -141,7 +141,7 @@ def _process_upload_task(job_id: str, tmp_name: str, filename: str, task: str,
 
             pose_result = GLOBAL_ESTIMATOR.estimate_from_video(
                 tmp_name, max_frames=None, progress_callback=progress_cb,
-                stereo=stereo, stereo_config=stereo_config, morphology=morphology
+                stereo=stereo, stereo_config=stereo_config, morphology='human'
             )
 
         JOB_STORE.update_job(job_id, 0.9, "Extracting biomechanical features...")
@@ -232,7 +232,6 @@ async def upload_av_file(
     stereo: str = Form("false"),
     baseline: float = Form(60.0),
     focal_length: float = Form(800.0),
-    morphology: str = Form("g1"),
 ):
     suffix = _video_suffix(camera.filename)
     tmp = tempfile.NamedTemporaryFile(suffix=suffix, delete=False)
@@ -264,7 +263,7 @@ async def upload_av_file(
     job_id = JOB_STORE.create_job()
     background_tasks.add_task(
         _process_upload_task, job_id, process_path, camera.filename, task,
-        stereo=is_stereo, baseline=baseline, focal_length=focal_length, morphology=morphology
+        stereo=is_stereo, baseline=baseline, focal_length=focal_length
     )
 
     return JSONResponse(content={"job_id": job_id, "status": "accepted"})

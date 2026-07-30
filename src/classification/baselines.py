@@ -26,15 +26,21 @@ CLASS_1_THRESHOLDS = {
     "symmetry": {"ideal": 2.0, "acceptable": 10.0, "weight": 0.2},
     "periodicity": {"ideal": 0.9, "acceptable": 0.6, "weight": 0.2},
     "rom_utilisation": {"ideal": 1.5, "acceptable": 0.5, "weight": 0.2},
-    "flight_time": {"ideal": 0.5, "acceptable": 0.1, "weight": 0.0},
-    "peak_z_accel": {"ideal": 9.8, "acceptable": 2.0, "weight": 0.0},
-    "landing_jerk": {"ideal": 50.0, "acceptable": 200.0, "weight": 0.0},
+    "flight_time_s": {"ideal": 0.8, "acceptable": 0.4, "weight": 0.0},
+    "peak_z_accel_g": {"ideal": 1.0, "acceptable": 0.2, "weight": 0.0},
+    "landing_jerk": {"ideal": 5.0, "acceptable": 20.0, "weight": 0.0},
     "com_oscillation": {"ideal": 0.05, "acceptable": 0.3, "weight": 0.0},
     "transition_time": {"ideal": 1.0, "acceptable": 3.0, "weight": 0.0},
     "mean_clearance_cm": {"ideal": 8.0, "acceptable": 3.0, "weight": 0.0},
     "stride_length_m": {"ideal": 0.6, "acceptable": 0.3, "weight": 0.0},
     "speed_m_s": {"ideal": 1.5, "acceptable": 0.5, "weight": 0.0},
-    "torso_oscillation_cm": {"ideal": 2.0, "acceptable": 8.0, "weight": 0.0}
+    "torso_oscillation_cm": {"ideal": 2.0, "acceptable": 8.0, "weight": 0.0},
+    "wrist_jerk": {"ideal": 1.0, "acceptable": 10.0, "weight": 0.0},
+    "red_block_displacement_cm": {"ideal": 15.0, "acceptable": 5.0, "weight": 0.0},
+    "white_block_displacement_cm": {"ideal": 15.0, "acceptable": 5.0, "weight": 0.0},
+    "wrist_to_block_min_dist_cm": {"ideal": 0.0, "acceptable": 5.0, "weight": 0.0},
+    "task_duration_s": {"ideal": 3.0, "acceptable": 15.0, "weight": 0.0},
+    "block_path_efficiency": {"ideal": 0.95, "acceptable": 0.3, "weight": 0.0}
 }
 
 CLASS_2_THRESHOLDS = {
@@ -43,15 +49,21 @@ CLASS_2_THRESHOLDS = {
     "symmetry": {"ideal": 10.0, "acceptable": 25.0, "weight": 0.2},
     "periodicity": {"ideal": 0.6, "acceptable": 0.3, "weight": 0.2},
     "rom_utilisation": {"ideal": 0.5, "acceptable": 0.2, "weight": 0.2},
-    "flight_time": {"ideal": 0.3, "acceptable": 0.05, "weight": 0.0},
-    "peak_z_accel": {"ideal": 5.0, "acceptable": 1.0, "weight": 0.0},
-    "landing_jerk": {"ideal": 100.0, "acceptable": 300.0, "weight": 0.0},
+    "flight_time_s": {"ideal": 0.6, "acceptable": 0.3, "weight": 0.0},
+    "peak_z_accel_g": {"ideal": 0.5, "acceptable": 0.1, "weight": 0.0},
+    "landing_jerk": {"ideal": 10.0, "acceptable": 30.0, "weight": 0.0},
     "com_oscillation": {"ideal": 0.1, "acceptable": 0.5, "weight": 0.0},
     "transition_time": {"ideal": 2.0, "acceptable": 5.0, "weight": 0.0},
     "mean_clearance_cm": {"ideal": 5.0, "acceptable": 2.0, "weight": 0.0},
     "stride_length_m": {"ideal": 0.4, "acceptable": 0.15, "weight": 0.0},
     "speed_m_s": {"ideal": 0.8, "acceptable": 0.2, "weight": 0.0},
-    "torso_oscillation_cm": {"ideal": 5.0, "acceptable": 12.0, "weight": 0.0}
+    "torso_oscillation_cm": {"ideal": 5.0, "acceptable": 12.0, "weight": 0.0},
+    "wrist_jerk": {"ideal": 5.0, "acceptable": 20.0, "weight": 0.0},
+    "red_block_displacement_cm": {"ideal": 5.0, "acceptable": 2.0, "weight": 0.0},
+    "white_block_displacement_cm": {"ideal": 5.0, "acceptable": 2.0, "weight": 0.0},
+    "wrist_to_block_min_dist_cm": {"ideal": 2.0, "acceptable": 8.0, "weight": 0.0},
+    "task_duration_s": {"ideal": 8.0, "acceptable": 20.0, "weight": 0.0},
+    "block_path_efficiency": {"ideal": 0.6, "acceptable": 0.1, "weight": 0.0}
 }
 
 CLASS_3_THRESHOLDS = {
@@ -60,15 +72,21 @@ CLASS_3_THRESHOLDS = {
     "symmetry": {"ideal": 25.0, "acceptable": 50.0, "weight": 0.2},
     "periodicity": {"ideal": 0.3, "acceptable": 0.1, "weight": 0.2},
     "rom_utilisation": {"ideal": 0.2, "acceptable": 0.05, "weight": 0.2},
-    "flight_time": {"ideal": 0.1, "acceptable": 0.0, "weight": 0.0},
-    "peak_z_accel": {"ideal": 2.0, "acceptable": 0.5, "weight": 0.0},
-    "landing_jerk": {"ideal": 200.0, "acceptable": 500.0, "weight": 0.0},
+    "flight_time_s": {"ideal": 0.4, "acceptable": 0.3, "weight": 0.0},
+    "peak_z_accel_g": {"ideal": 0.2, "acceptable": 0.05, "weight": 0.0},
+    "landing_jerk": {"ideal": 20.0, "acceptable": 50.0, "weight": 0.0},
     "com_oscillation": {"ideal": 0.2, "acceptable": 0.8, "weight": 0.0},
     "transition_time": {"ideal": 4.0, "acceptable": 10.0, "weight": 0.0},
     "mean_clearance_cm": {"ideal": 2.0, "acceptable": 0.5, "weight": 0.0},
     "stride_length_m": {"ideal": 0.2, "acceptable": 0.05, "weight": 0.0},
     "speed_m_s": {"ideal": 0.3, "acceptable": 0.05, "weight": 0.0},
-    "torso_oscillation_cm": {"ideal": 10.0, "acceptable": 20.0, "weight": 0.0}
+    "torso_oscillation_cm": {"ideal": 10.0, "acceptable": 20.0, "weight": 0.0},
+    "wrist_jerk": {"ideal": 10.0, "acceptable": 40.0, "weight": 0.0},
+    "red_block_displacement_cm": {"ideal": 2.0, "acceptable": 0.0, "weight": 0.0},
+    "white_block_displacement_cm": {"ideal": 2.0, "acceptable": 0.0, "weight": 0.0},
+    "wrist_to_block_min_dist_cm": {"ideal": 8.0, "acceptable": 20.0, "weight": 0.0},
+    "task_duration_s": {"ideal": 15.0, "acceptable": 40.0, "weight": 0.0},
+    "block_path_efficiency": {"ideal": 0.2, "acceptable": 0.0, "weight": 0.0}
 }
 
 # Task-specific weight overrides
@@ -86,9 +104,9 @@ TASK_WEIGHTS = {
     },
 
     "jumping": {
-        "flight_time": 0.4,
-        "peak_z_accel": 0.3,
-        "landing_jerk": 0.3,
+        "flight_time_s": 0.7,
+        "peak_z_accel_g": 0.15,
+        "landing_jerk": 0.15,
         "smoothness_ldlj": 0.0,
         "smoothness_sparc": 0.0,
         "symmetry": 0.0,
@@ -103,15 +121,37 @@ TASK_WEIGHTS = {
         "symmetry": 0.0,
         "periodicity": 0.0,
         "rom_utilisation": 0.0
+    },
+    "manipulation": {
+        "smoothness_ldlj": 0.0,
+        "smoothness_sparc": 0.0,
+        "symmetry": 0.0,
+        "periodicity": 0.0,
+        "rom_utilisation": 0.0,
+        "flight_time_s": 0.0,
+        "peak_z_accel_g": 0.0,
+        "landing_jerk": 0.0,
+        "com_oscillation": 0.0,
+        "transition_time": 0.0,
+        "mean_clearance_cm": 0.0,
+        "stride_length_m": 0.0,
+        "speed_m_s": 0.0,
+        "torso_oscillation_cm": 0.0,
+        "wrist_jerk": 0.2,
+        "red_block_displacement_cm": 0.0,
+        "white_block_displacement_cm": 0.0,
+        "wrist_to_block_min_dist_cm": 0.2,
+        "task_duration_s": 0.3,
+        "block_path_efficiency": 0.3
     }
 }
 
 def get_tier_thresholds(tier_name: str, task: str = "general") -> Dict[str, ThresholdBound]:
     """Retrieve thresholds for a specific tier, applying task-specific weights."""
     mapping = {
-        "Superhuman/Industrial": CLASS_1_THRESHOLDS,
-        "Research": CLASS_2_THRESHOLDS,
-        "Experimental": CLASS_3_THRESHOLDS
+        "Adult": CLASS_1_THRESHOLDS,
+        "Adolescent": CLASS_2_THRESHOLDS,
+        "Infant": CLASS_3_THRESHOLDS
     }
     base = mapping.get(tier_name, CLASS_3_THRESHOLDS)
     

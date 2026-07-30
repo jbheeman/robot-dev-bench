@@ -21,281 +21,18 @@ from scipy.signal import correlate, find_peaks
 _trapezoid = getattr(np, 'trapezoid', None) or np.trapz
 
 
-def compute_smoothness_3d(
-    poses_3d: np.ndarray,
-    fps: float,
-    valid_mask: np.ndarray | None = None,
-) -> Dict[str, Any]:
-    """
-    Computes Log Dimensionless Jerk (LDLJ) on 3D joint trajectories.
-    Scale-invariant. Higher (less negative) = smoother.
-
-    Args:
-        poses_3d:   (T, J, 3) array.
-        fps:        Frames per second.
-        valid_mask: (T, J) boolean mask. Joints marked False are interpolated.
-
-    Returns:
-        Dict with mean_ldlj and per-joint values.
-    """
-    T, J, _ = poses_3d.shape
-    if T < 4 or fps <= 0:
-        return {"mean_ldlj": 0.0, "status": "insufficient_data"}
-
-    dt = 1.0 / fps
-    poses = _interpolate_nans(poses_3d.copy())
-
-    ldlj_per_joint = []
-    for j in range(J):
-        traj = poses[:, j, :]  # (T, 3)
-
-        # Velocity, acceleration, jerk (central differences)
-        v = np.gradient(traj, dt, axis=0)  # (T, 3)
-        a = np.gradient(v, dt, axis=0)
-        jerk = np.gradient(a, dt, axis=0)
-
-        speed = np.linalg.norm(v, axis=1)
-        v_peak = np.max(speed)
-
-        if v_peak < 1e-4:
-            ldlj_per_joint.append(0.0)
-            continue
-
-        duration = T * dt
-        jerk_sq = np.sum(jerk ** 2, axis=1)  # scalar jerk magnitude squared
-        jerk_integral = _trapezoid(jerk_sq, dx=dt)
-
-        term = (duration ** 3 / v_peak ** 2) * jerk_integral
-        ldlj = -np.log(max(term, 1e-12))
-        ldlj_per_joint.append(float(ldlj))
-
-    mean_ldlj = float(np.mean(ldlj_per_joint)) if ldlj_per_joint else 0.0
-    return {"mean_ldlj": mean_ldlj, "ldlj_per_joint": ldlj_per_joint}
 
 
-def compute_sparc_3d(
-    poses_3d: np.ndarray,
-    fps: float,
-) -> Dict[str, Any]:
-    """
-    Computes Spectral Arc Length (SPARC) on 3D velocity profiles.
-    Shorter arc length (closer to 0) = smoother.
-
-    Args:
-        poses_3d: (T, J, 3) array.
-        fps:      Frames per second.
-
-    Returns:
-        Dict with mean_sparc and per-joint values.
-    """
-    T, J, _ = poses_3d.shape
-    if T < 4 or fps <= 0:
-        return {"mean_sparc": 0.0, "status": "insufficient_data"}
-
-    dt = 1.0 / fps
-    poses = _interpolate_nans(poses_3d.copy())
-
-    sparc_per_joint = []
-    for j in range(J):
-        v = np.gradient(poses[:, j, :], dt, axis=0)
-        speed = np.linalg.norm(v, axis=1)  # (T,)
-
-        if np.max(speed) < 1e-4:
-            sparc_per_joint.append(0.0)
-            continue
-
-        f_mag = np.abs(np.fft.rfft(speed))
-        if f_mag[0] == 0:
-            f_mag[0] = 1e-6
-        f_norm = f_mag / f_mag[0]
-
-        df = np.diff(f_norm)
-        dw = 1.0 / len(f_norm)
-        arc_len = np.sum(np.sqrt(dw ** 2 + df ** 2))
-        sparc_per_joint.append(-float(arc_len))
-
-    mean_sparc = float(np.mean(sparc_per_joint)) if sparc_per_joint else 0.0
-    return {"mean_sparc": mean_sparc, "sparc_per_joint": sparc_per_joint}
 
 
-def compute_symmetry_3d(
-    poses_3d: np.ndarray,
-    left_joints: list | None = None,
-    right_joints: list | None = None,
-) -> Dict[str, Any]:
-    """
-    Computes Symmetry Index (SI) between left and right joint pairs.
-
-    Default uses COCO keypoint pairing:
-        L/R shoulder (5,6), L/R elbow (7,8), L/R wrist (9,10),
-        L/R hip (11,12), L/R knee (13,14), L/R ankle (15,16).
-
-    Returns SI in percentage (0% = perfect symmetry).
-    """
-    if left_joints is None:
-        left_joints = [5, 7, 9, 11, 13, 15]
-    if right_joints is None:
-        right_joints = [6, 8, 10, 12, 14, 16]
-
-    poses = _interpolate_nans(poses_3d.copy())
-    si_values = []
-
-    for lj, rj in zip(left_joints, right_joints):
-        l_rom = np.ptp(poses[:, lj, :], axis=0)  # (3,) ROM per axis
-        r_rom = np.ptp(poses[:, rj, :], axis=0)
-
-        l_total = np.linalg.norm(l_rom)
-        r_total = np.linalg.norm(r_rom)
-        denom = max(l_total, r_total)
-
-        if denom < 1e-4:
-            continue
-
-        si = (abs(l_total - r_total) / denom) * 100.0
-        si_values.append(si)
-
-    mean_si = float(np.mean(si_values)) if si_values else 0.0
-    return {"mean_symmetry_index": mean_si, "si_per_pair": si_values}
 
 
-def compute_periodicity_3d(
-    poses_3d: np.ndarray,
-    fps: float,
-) -> Dict[str, Any]:
-    """
-    Autocorrelation-based periodicity analysis on 3D joint trajectories.
-    Returns a regularity score (height of first autocorrelation peak).
-    """
-    T, J, _ = poses_3d.shape
-    if T < 20 or fps <= 0:
-        return {"regularity_score": 0.0, "status": "insufficient_data"}
-
-    poses = _interpolate_nans(poses_3d.copy())
-
-    # Compute speed profile averaged across all joints
-    dt = 1.0 / fps
-    v = np.gradient(poses, dt, axis=0)  # (T, J, 3)
-    speeds = np.linalg.norm(v, axis=2)  # (T, J)
-    global_speed = np.mean(speeds, axis=1)  # (T,)
-
-    if np.var(global_speed) < 1e-8:
-        return {"regularity_score": 0.0}
-
-    signal = global_speed - np.mean(global_speed)
-    autocorr = correlate(signal, signal, mode="full")
-    autocorr = autocorr[len(autocorr) // 2:]
-    if autocorr[0] > 0:
-        autocorr /= autocorr[0]
-
-    min_dist = max(5, int(fps * 0.3))
-    peaks, _ = find_peaks(autocorr, distance=min_dist, height=0.1)
-
-    if len(peaks) > 0:
-        return {"regularity_score": float(autocorr[peaks[0]])}
-    return {"regularity_score": 0.0}
 
 
-def compute_rom_3d(poses_3d: np.ndarray) -> Dict[str, Any]:
-    """
-    Range of Motion for each joint in 3D space (metres).
-    """
-    poses = _interpolate_nans(poses_3d.copy())
-    T, J, _ = poses.shape
-
-    rom_per_joint = []
-    for j in range(J):
-        rom = np.max(np.ptp(poses[:, j, :], axis=0))
-        rom_per_joint.append(float(rom))
-
-    mean_rom = float(np.mean(rom_per_joint)) if rom_per_joint else 0.0
-    return {"mean_rom": mean_rom, "rom_per_joint": rom_per_joint}
 
 
-def compute_jumping_metrics_3d(
-    poses_3d: np.ndarray,
-    fps: float,
-) -> Dict[str, Any]:
-    """
-    Heuristic estimation of jumping metrics using 3D joint trajectories.
-    Assumes jumping is a full-body movement involving rapid vertical acceleration.
-    """
-    T, J, _ = poses_3d.shape
-    if T < 4 or fps <= 0:
-        return {"flight_time": 0.0, "peak_z_accel": 0.0, "landing_jerk": 0.0}
-
-    dt = 1.0 / fps
-    poses = _interpolate_nans(poses_3d.copy())
-
-    # We use the vertical axis (Y or Z, depending on convention).
-    # Assuming Y is up, which is index 1.
-    vertical_poses = poses[:, :, 1] # (T, J)
-    global_vertical = np.mean(vertical_poses, axis=1) # (T,)
-
-    v = np.gradient(global_vertical, dt)
-    a = np.gradient(v, dt)
-    j = np.gradient(a, dt)
-
-    abs_a = np.abs(a)
-    abs_j = np.abs(j)
-
-    peak_z_accel = float(np.max(abs_a))
-    landing_jerk = float(np.max(abs_j))
-
-    # Flight time: period where velocity is very low AFTER a huge acceleration peak
-    push_off_idx = np.argmax(abs_a)
-    landing_jerk_idx = np.argmax(abs_j[push_off_idx:]) + push_off_idx
-
-    if landing_jerk_idx > push_off_idx:
-        flight_time = float((landing_jerk_idx - push_off_idx) * dt)
-    else:
-        flight_time = 0.0
-
-    return {
-        "flight_time": max(0.0, flight_time),
-        "peak_z_accel": peak_z_accel,
-        "landing_jerk": landing_jerk
-    }
 
 
-def compute_transition_metrics_3d(
-    poses_3d: np.ndarray,
-    fps: float,
-) -> Dict[str, Any]:
-    """
-    Heuristic estimation for Stand <-> Sit transitions from 3D joint trajectories.
-    """
-    T, J, _ = poses_3d.shape
-    if T < 4 or fps <= 0:
-        return {"com_oscillation": 0.0, "transition_time": 0.0}
-
-    dt = 1.0 / fps
-    poses = _interpolate_nans(poses_3d.copy())
-
-    # Use vertical axis
-    vertical_poses = poses[:, :, 1]
-    global_vertical = np.mean(vertical_poses, axis=1)
-
-    v = np.gradient(global_vertical, dt)
-    abs_v = np.abs(v)
-
-    threshold = np.max(abs_v) * 0.15
-    active_indices = np.where(abs_v > threshold)[0]
-
-    if len(active_indices) > 0:
-        transition_time = float((active_indices[-1] - active_indices[0]) * dt)
-    else:
-        transition_time = 0.0
-
-    if len(active_indices) > 2:
-        active_v = v[active_indices]
-        com_oscillation = float(np.var(active_v))
-    else:
-        com_oscillation = 0.0
-
-    return {
-        "com_oscillation": com_oscillation,
-        "transition_time": max(0.0, transition_time)
-    }
 
 
 # ── Utility ─────────────────────────────────────────────────────────────────
@@ -605,176 +342,7 @@ def compute_transition_metrics(df: pd.DataFrame) -> Dict[str, Any]:
         "transition_time": max(0.0, transition_time)
     }
 
-def compute_walk_grade_3d(
-    poses_3d: np.ndarray,
-    fps: float,
-) -> Dict[str, Any]:
-    pass
 
-def compute_walk_grade_3d(
-    poses_3d: np.ndarray,
-    fps: float,
-    keypoints_2d: Optional[np.ndarray] = None,
-    confidence_2d: Optional[np.ndarray] = None,
-) -> Dict[str, Any]:
-    """
-    Grading the walking cycle of the robot based on clearance, stride symmetry, speed, and torso levelness.
-    Poses are in (T, 17, 3), coordinates: X=right, Y=up, Z=towards-camera (meters)
-    """
-    T, J, _ = poses_3d.shape
-    if T < 10 or fps <= 0:
-        return {
-            "walk_grade": 0.0, 
-            "status": "insufficient_data",
-            "mean_clearance_cm": 0.0,
-            "stride_length_m": 0.0,
-            "speed_m_s": 0.0,
-            "torso_oscillation_cm": 0.0
-        }
-        
-    dt = 1.0 / fps
-    poses = _interpolate_nans(poses_3d.copy())
-    
-    # 1. Torso Levelness & Fall Detection (10%)
-    pelvis_y = (poses[:, 11, 1] + poses[:, 12, 1]) / 2.0
-    lowest_ankle_y = np.minimum(poses[:, 15, 1], poses[:, 16, 1])
-    pelvis_clearance = pelvis_y - lowest_ankle_y
-    
-    # Filter out false falls from objects (like chairs) detected when person walks out of frame
-    fall_detected = False
-    
-    if keypoints_2d is not None and confidence_2d is not None:
-        # A real person will have > 0.3 mean confidence across all joints
-        valid_frames = np.mean(confidence_2d, axis=1) > 0.3
-        
-        # Check for teleportation (tracking switch to background object)
-        com_2d = np.nanmean(keypoints_2d, axis=1) # (T, 2)
-        dist = np.linalg.norm(np.diff(com_2d, axis=0), axis=1)
-        dist = np.insert(dist, 0, 0.0) # pad to length T
-        
-        # If the tracking center shifts > 150 pixels in one frame, it's a tracking switch.
-        # We invalidate that frame and ALL subsequent frames!
-        has_teleported = np.cumsum(dist > 150.0) > 0
-        valid_frames = valid_frames & (~has_teleported)
-        
-        if np.any(valid_frames):
-            fall_detected = bool(np.min(pelvis_clearance[valid_frames]) < 0.2)
-    else:
-        fall_detected = bool(np.min(pelvis_clearance) < 0.2)
-    
-    torso_oscillation = np.std(pelvis_y)
-    
-    torso_score = 100.0
-    if torso_oscillation > 0.02:
-        penalty = ((torso_oscillation - 0.02) / 0.03) * 100.0
-        torso_score = max(0.0, 100.0 - penalty)
-        
-    # 2. Foot Clearance (35%)
-    def analyze_foot(y_traj):
-        peaks, _ = find_peaks(y_traj, distance=int(fps*0.3), prominence=0.01)
-        clearances = []
-        for p in peaks:
-            left = max(0, p - int(fps*0.5))
-            right = min(T, p + int(fps*0.5))
-            min_y = np.min(y_traj[left:right])
-            clearances.append(y_traj[p] - min_y)
-        return clearances
-
-    left_clearances = analyze_foot(poses[:, 15, 1])
-    right_clearances = analyze_foot(poses[:, 16, 1])
-    all_clearances = left_clearances + right_clearances
-    
-    clearance_score = 100.0
-    mean_clearance = 0.0
-    if not all_clearances:
-        clearance_score = 0.0
-    else:
-        mean_clearance = float(np.mean(all_clearances))
-        if mean_clearance < 0.02: # Shuffle
-            clearance_score -= 50.0 
-        elif mean_clearance > 0.06: # Wasting energy
-            clearance_score -= 30.0 
-            
-        std_clearance = float(np.std(all_clearances))
-        if std_clearance > 0.005:
-            clearance_score -= 50.0 
-        elif std_clearance > 0.0025:
-            penalty = ((std_clearance - 0.0025) / 0.0025) * 50.0
-            clearance_score -= penalty
-            
-    clearance_score = max(0.0, clearance_score)
-
-    # 3. Stride Length & Symmetry (35%)
-    def find_valleys(y_traj):
-        valleys, _ = find_peaks(-y_traj, distance=int(fps*0.3), prominence=0.01)
-        return valleys
-        
-    left_valleys = find_valleys(poses[:, 15, 1])
-    right_valleys = find_valleys(poses[:, 16, 1])
-    
-    stride_lengths = []
-    for v in left_valleys:
-        dist = np.linalg.norm(poses[v, 15, [0, 2]] - poses[v, 16, [0, 2]])
-        stride_lengths.append(('L', dist))
-    for v in right_valleys:
-        dist = np.linalg.norm(poses[v, 15, [0, 2]] - poses[v, 16, [0, 2]])
-        stride_lengths.append(('R', dist))
-        
-    symmetry_score = 100.0
-    mean_stride = 0.0
-    l_strides = [s[1] for s in stride_lengths if s[0] == 'L']
-    r_strides = [s[1] for s in stride_lengths if s[0] == 'R']
-    
-    if l_strides and r_strides:
-        mean_l = np.mean(l_strides)
-        mean_r = np.mean(r_strides)
-        mean_stride = float((mean_l + mean_r) / 2.0)
-        
-        diff = abs(mean_l - mean_r)
-        if mean_stride > 0:
-            asym_ratio = diff / mean_stride
-            if asym_ratio > 0.05: 
-                penalty = min(100.0, ((asym_ratio - 0.05) / 0.15) * 100.0)
-                symmetry_score -= penalty
-    else:
-        symmetry_score = 0.0
-        
-    symmetry_score = max(0.0, symmetry_score)
-
-    # 4. Speed (20%)
-    pelvis_xz = (poses[:, 11, [0, 2]] + poses[:, 12, [0, 2]]) / 2.0
-    dist_travelled = 0.0
-    for i in range(1, T):
-        dist_travelled += np.linalg.norm(pelvis_xz[i] - pelvis_xz[i-1])
-    
-    duration = T * dt
-    speed = float(dist_travelled / duration) if duration > 0 else 0.0
-    
-    speed_score = 100.0
-    if speed < 0.2:
-        speed_score = 0.0
-    elif speed < 0.4:
-        speed_score = ((speed - 0.2) / 0.2) * 100.0
-        
-    final_score = (
-        (clearance_score * 0.35) +
-        (symmetry_score * 0.35) +
-        (speed_score * 0.20) +
-        (torso_score * 0.10)
-    )
-    
-    return {
-        "walk_grade": float(final_score),
-        "mean_clearance_cm": mean_clearance * 100.0,
-        "stride_length_m": mean_stride,
-        "speed_m_s": speed,
-        "torso_oscillation_cm": float(torso_oscillation * 100.0),
-        "clearance_score": float(clearance_score),
-        "symmetry_score": float(symmetry_score),
-        "speed_score": float(speed_score),
-        "torso_score": float(torso_score),
-        "fall_detected": fall_detected
-    }
 
 
 # ──────────────────────────────────────────────────────────────────────────────
@@ -786,6 +354,8 @@ _COCO_L_SHOULDER = 5
 _COCO_R_SHOULDER = 6
 _COCO_L_ELBOW = 7
 _COCO_R_ELBOW = 8
+_COCO_L_WRIST = 9
+_COCO_R_WRIST = 10
 _COCO_L_HIP = 11
 _COCO_R_HIP = 12
 _COCO_L_ANKLE = 15
@@ -1066,4 +636,274 @@ def compute_walk_grade_2d(
         "cm_per_pixel": float(cm_per_px),
         "fall_detected": fall_detected,
         "status": "ok",
+    }
+
+def compute_jumping_metrics_2d(
+    keypoints: np.ndarray,
+    confidence: np.ndarray,
+    fps: float,
+    ref_length_cm: float = 20.0,
+    conf_threshold: float = 0.3,
+) -> Dict[str, Any]:
+    """
+    Heuristic estimation of jumping metrics using 2D joint trajectories.
+    Assumes jumping is a full-body movement involving rapid vertical acceleration.
+    """
+    T = keypoints.shape[0]
+    empty = {"flight_time": 0.0, "peak_z_accel": 0.0, "landing_jerk": 0.0, "fall_detected": False}
+    if T < 4 or fps <= 0:
+        return empty
+
+    # Compute cm_per_px scale from shoulder-to-elbow reference
+    ref_pixels = []
+    for t in range(T):
+        if (confidence[t, _COCO_L_SHOULDER] >= conf_threshold and
+                confidence[t, _COCO_L_ELBOW] >= conf_threshold):
+            d = _pixel_dist(keypoints[t, _COCO_L_SHOULDER],
+                            keypoints[t, _COCO_L_ELBOW])
+            if d > 1.0:
+                ref_pixels.append(d)
+        if (confidence[t, _COCO_R_SHOULDER] >= conf_threshold and
+                confidence[t, _COCO_R_ELBOW] >= conf_threshold):
+            d = _pixel_dist(keypoints[t, _COCO_R_SHOULDER],
+                            keypoints[t, _COCO_R_ELBOW])
+            if d > 1.0:
+                ref_pixels.append(d)
+
+    if len(ref_pixels) < 5:
+        return empty
+
+    median_ref_px = float(np.median(ref_pixels))
+    cm_per_px = ref_length_cm / median_ref_px
+
+    dt = 1.0 / fps
+    kp_cm = keypoints.copy().astype(np.float64)
+    for t in range(T):
+        for j in range(keypoints.shape[1]):
+            if confidence[t, j] < conf_threshold:
+                kp_cm[t, j] = [np.nan, np.nan]
+    kp_cm *= cm_per_px  # convert pixel -> cm
+    kp_m = kp_cm / 100.0  # convert cm -> m
+    
+    # Interpolate nans
+    poses = _interpolate_nans(kp_m)
+
+    # Vertical axis in 2D image is usually index 1 (y-axis)
+    vertical_poses = poses[:, :, 1]
+    global_vertical = np.mean(vertical_poses, axis=1)
+    
+    try:
+        from src.processing.filter import TelemetryFilter
+        b_filter = TelemetryFilter(sample_rate=fps, cutoff_freq=5.0, order=4)
+        global_vertical = b_filter.filter_array(global_vertical)
+    except Exception:
+        pass
+
+    v = np.gradient(global_vertical, dt)
+    a = np.gradient(v, dt)
+    j = np.gradient(a, dt)
+
+    abs_a = np.abs(a)
+    abs_j = np.abs(j)
+
+    peak_z_accel = float(np.max(abs_a))
+    landing_jerk = float(np.max(abs_j))
+
+    # In 2D, Y increases downwards, so jumping UP means Y is decreasing (min Y = apex)
+    apex_idx = int(np.argmin(global_vertical))
+    
+    if apex_idx > 0:
+        takeoff_idx = int(np.argmin(v[:apex_idx]))
+    else:
+        takeoff_idx = 0
+        
+    if apex_idx < len(v) - 1:
+        landing_idx = int(np.argmax(v[apex_idx:])) + apex_idx
+    else:
+        landing_idx = apex_idx
+
+    flight_time = float((landing_idx - takeoff_idx) * dt)
+    
+    # Fall detection based on pelvis clearance in meters
+    lowest_ankle_y = np.maximum(poses[:, _COCO_L_ANKLE, 1], poses[:, _COCO_R_ANKLE, 1])
+    hip_y = np.nanmean(poses[:, [_COCO_L_HIP, _COCO_R_HIP], 1], axis=1)
+    pelvis_clearance = lowest_ankle_y - hip_y
+    fall_detected = bool(np.nanmin(pelvis_clearance) < 0.2) # less than 20cm
+
+    return {
+        "flight_time": max(0.0, flight_time),
+        "peak_z_accel": peak_z_accel / 9.81,
+        "landing_jerk": landing_jerk / 9.81,
+        "fall_detected": fall_detected
+    }
+
+
+def compute_manipulation_metrics_2d(
+    keypoints: np.ndarray,
+    confidence: np.ndarray,
+    fps: float,
+    ref_length_cm: float = 20.0,
+    conf_threshold: float = 0.3,
+    objects: Optional[Dict[str, np.ndarray]] = None,
+) -> Dict[str, Any]:
+    """
+    Heuristic estimation of manipulation metrics using 2D joint trajectories.
+    Currently focuses on wrist jerk to evaluate smoothness.
+    """
+    T = keypoints.shape[0]
+    empty = {
+        "wrist_jerk": 0.0,
+        "red_block_displacement_cm": 0.0,
+        "white_block_displacement_cm": 0.0,
+        "wrist_to_block_min_dist_cm": 100.0
+    }
+    if T < 4 or fps <= 0:
+        return empty
+
+    # Compute cm_per_px scale from shoulder-to-elbow reference
+    ref_pixels = []
+    for t in range(T):
+        if (confidence[t, _COCO_L_SHOULDER] >= conf_threshold and
+                confidence[t, _COCO_L_ELBOW] >= conf_threshold):
+            d = _pixel_dist(keypoints[t, _COCO_L_SHOULDER],
+                            keypoints[t, _COCO_L_ELBOW])
+            if d > 1.0:
+                ref_pixels.append(d)
+        if (confidence[t, _COCO_R_SHOULDER] >= conf_threshold and
+                confidence[t, _COCO_R_ELBOW] >= conf_threshold):
+            d = _pixel_dist(keypoints[t, _COCO_R_SHOULDER],
+                            keypoints[t, _COCO_R_ELBOW])
+            if d > 1.0:
+                ref_pixels.append(d)
+
+    if len(ref_pixels) < 5:
+        return empty
+
+    median_ref_px = float(np.median(ref_pixels))
+    cm_per_px = ref_length_cm / median_ref_px
+
+    dt = 1.0 / fps
+    kp_cm = keypoints.copy().astype(np.float64)
+    for t in range(T):
+        for j in range(keypoints.shape[1]):
+            if confidence[t, j] < conf_threshold:
+                kp_cm[t, j] = [np.nan, np.nan]
+    kp_cm *= cm_per_px  # convert pixel -> cm
+    kp_m = kp_cm / 100.0  # convert cm -> m
+    
+    red_block_displacement_cm = 0.0
+    white_block_displacement_cm = 0.0
+    wrist_to_block_min_dist_cm = 100.0
+    task_duration_s = 0.0
+    block_path_efficiency = 0.0
+    
+    def process_block(block_traj):
+        nonlocal task_duration_s, block_path_efficiency
+        if block_traj is not None and len(block_traj) > 0:
+            valid_idx = np.where(~np.isnan(block_traj[:, 0]))[0]
+            if len(valid_idx) > 1:
+                valid_pts = block_traj[valid_idx]
+                
+                # Active Duration
+                active_start = 0
+                active_end = len(valid_pts) - 1
+                for i in range(1, len(valid_pts)):
+                    if np.linalg.norm(valid_pts[i] - valid_pts[0]) * cm_per_px > 1.0:
+                        active_start = i
+                        break
+                for i in range(len(valid_pts)-2, -1, -1):
+                    if np.linalg.norm(valid_pts[i] - valid_pts[-1]) * cm_per_px > 1.0:
+                        active_end = i
+                        break
+                if active_end > active_start:
+                    task_duration_s = max(task_duration_s, (active_end - active_start) / fps)
+                
+                # Path Efficiency (Penalize moving backwards relative to goal)
+                start_pt = valid_pts[0]
+                end_pt = valid_pts[-1]
+                goal_vec = end_pt - start_pt
+                goal_dist = np.linalg.norm(goal_vec)
+                
+                total_displacement = 0.0
+                if goal_dist > 1e-5:
+                    goal_dir = goal_vec / goal_dist
+                    total_backwards = 0.0
+                    total_path = 0.0
+                    for i in range(len(valid_pts) - 1):
+                        step_vec = valid_pts[i+1] - valid_pts[i]
+                        step_dist = np.linalg.norm(step_vec) * cm_per_px
+                        if step_dist < 50.0:
+                            total_path += step_dist
+                            proj = np.dot(step_vec, goal_dir) * cm_per_px
+                            if proj < 0:
+                                total_backwards += abs(proj)
+                    if total_path > 1.0:
+                        efficiency = max(0.0, 1.0 - (total_backwards / total_path))
+                        block_path_efficiency = max(block_path_efficiency, efficiency)
+                    total_displacement = total_path
+        return total_displacement
+
+    if objects:
+        red_block = objects.get("red_block")
+        red_block_displacement_cm = float(process_block(red_block))
+        
+        white_block = objects.get("white_block")
+        white_block_displacement_cm = float(process_block(white_block))
+
+        min_dist = float('inf')
+        for t in range(T):
+            for wrist_idx in [_COCO_L_WRIST, _COCO_R_WRIST]:
+                if confidence[t, wrist_idx] >= conf_threshold:
+                    wrist_pt = keypoints[t, wrist_idx]
+                    if red_block is not None and t < len(red_block) and not np.isnan(red_block[t, 0]):
+                        d = _pixel_dist(wrist_pt, red_block[t]) * cm_per_px
+                        if d < min_dist: min_dist = d
+                    if white_block is not None and t < len(white_block) and not np.isnan(white_block[t, 0]):
+                        d = _pixel_dist(wrist_pt, white_block[t]) * cm_per_px
+                        if d < min_dist: min_dist = d
+        if min_dist != float('inf'):
+            wrist_to_block_min_dist_cm = min_dist
+
+    # Interpolate nans
+    poses = _interpolate_nans(kp_m)
+    
+    try:
+        from src.processing.filter import TelemetryFilter
+        b_filter = TelemetryFilter(sample_rate=fps, cutoff_freq=3.0, order=4)
+    except Exception:
+        b_filter = None
+
+    jerks = []
+    
+    for wrist_idx in [_COCO_L_WRIST, _COCO_R_WRIST]:
+        wrist_poses = poses[:, wrist_idx, :] # (T, 2)
+        
+        if b_filter:
+            wrist_x = b_filter.filter_array(wrist_poses[:, 0])
+            wrist_y = b_filter.filter_array(wrist_poses[:, 1])
+        else:
+            wrist_x = wrist_poses[:, 0]
+            wrist_y = wrist_poses[:, 1]
+            
+        vx = np.gradient(wrist_x, dt)
+        vy = np.gradient(wrist_y, dt)
+        
+        ax = np.gradient(vx, dt)
+        ay = np.gradient(vy, dt)
+        
+        jx = np.gradient(ax, dt)
+        jy = np.gradient(ay, dt)
+        
+        jerk_mag = np.sqrt(jx**2 + jy**2)
+        jerks.extend(jerk_mag)
+        
+    wrist_jerk = float(np.nanmax(jerks)) if len(jerks) > 0 and not np.all(np.isnan(jerks)) else 0.0
+
+    return {
+        "wrist_jerk": wrist_jerk / 9.81, # normalized to g/s
+        "red_block_displacement_cm": red_block_displacement_cm,
+        "white_block_displacement_cm": white_block_displacement_cm,
+        "wrist_to_block_min_dist_cm": wrist_to_block_min_dist_cm,
+        "task_duration_s": task_duration_s,
+        "block_path_efficiency": block_path_efficiency
     }

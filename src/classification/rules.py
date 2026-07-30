@@ -15,34 +15,34 @@ class RuleBasedClassifier:
         
         # Check if lower is better (e.g. symmetry: ideal=2.0, worst=50.0)
         if ideal < worst:
+            if actual_value >= worst:
+                return 0.0
             if actual_value <= ideal:
                 return 1.0
-            elif actual_value >= worst:
-                return 0.0
-            else:
-                return 1.0 - ((actual_value - ideal) / (worst - ideal))
+            return 1.0 - ((actual_value - ideal) / (worst - ideal))
         # Check if higher is better (e.g. periodicity: ideal=0.9, worst=0.1)
         else:
+            if actual_value <= worst:
+                return 0.0
             if actual_value >= ideal:
                 return 1.0
-            elif actual_value <= worst:
-                return 0.0
-            else:
-                return (actual_value - worst) / (ideal - worst)
+            return (actual_value - worst) / (ideal - worst)
 
-    def classify(self, metrics: Dict[str, float], task: str = "general") -> Tuple[float, str]:
+    def classify(self, metrics: Dict[str, float], task: str = "general") -> Tuple[float, str, Dict[str, float]]:
         """
         Classify a set of telemetry metrics.
-        Returns a tuple: (overall_score, tier_label)
+        Returns a tuple: (overall_score, tier_label, contributions_dict)
         """
-        ideal_thresholds = get_tier_thresholds("Superhuman/Industrial", task)
-        worst_thresholds = get_tier_thresholds("Experimental", task)
+        ideal_thresholds = get_tier_thresholds("Adult", task)
+        worst_thresholds = get_tier_thresholds("Infant", task)
         
-        if metrics.get("fall_detected", 0.0) == 1.0 and task.lower() == "walking":
-            return 0.0, "Fall Detected"
+        if metrics.get("fall_detected", 0.0) == 1.0 and task.lower() in ("walking", "jumping"):
+            return 0.0, "Fall Detected", {}
             
         total_score = 0.0
         total_weight = 0.0
+        
+        contributions = {}
         
         for metric_name, bound in ideal_thresholds.items():
             if metric_name in metrics:
@@ -56,21 +56,25 @@ class RuleBasedClassifier:
                 
                 score = self._score_metric(metric_name, actual_val, ideal_thresholds, worst_thresholds)
                 
+                contributions[metric_name] = score * weight
                 total_score += score * weight
                 total_weight += weight
                 
         # Normalize in case some metrics were missing or weight was 0
         if total_weight > 0:
             final_score = total_score / total_weight
+            # normalize contributions to the final score scale
+            for m in contributions:
+                contributions[m] = contributions[m] / total_weight
         else:
             final_score = 0.0
             
         # Determine Tier
         if final_score >= 0.85:
-            tier = "Superhuman/Industrial"
+            tier = "Adult"
         elif final_score >= 0.60:
-            tier = "Research"
+            tier = "Adolescent"
         else:
-            tier = "Experimental"
+            tier = "Infant"
             
-        return final_score, tier
+        return final_score, tier, contributions

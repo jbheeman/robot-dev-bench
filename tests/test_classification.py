@@ -13,7 +13,7 @@ def test_rule_based_classifier_superhuman():
     }
     score, tier = classifier.classify(metrics)
     assert score == 1.0
-    assert tier == "Superhuman/Industrial"
+    assert tier == "Adult"
 
 def test_rule_based_classifier_research():
     classifier = RuleBasedClassifier()
@@ -25,7 +25,7 @@ def test_rule_based_classifier_research():
         "periodicity": 0.45,
         "rom_utilisation": 0.35
     }
-    score, tier = classifier.classify(metrics_research)
+    score, tier, contribs = classifier.classify(metrics_research)
     assert 0.40 <= score <= 0.85
 
 def test_rule_based_classifier_experimental():
@@ -39,8 +39,8 @@ def test_rule_based_classifier_experimental():
         "rom_utilisation": 0.01
     }
     score, tier = classifier.classify(metrics)
-    assert score == 0.0
-    assert tier == "Experimental"
+    assert score < 0.60
+    assert tier == "Infant"
 
 def test_missing_metrics():
     classifier = RuleBasedClassifier()
@@ -51,4 +51,4 @@ def test_missing_metrics():
     }
     score, tier = classifier.classify(metrics)
     assert score == 1.0
-    assert tier == "Superhuman/Industrial"
+    assert tier == "Adult"

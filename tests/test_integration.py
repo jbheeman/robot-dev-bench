@@ -23,7 +23,7 @@ from fastapi.testclient import TestClient
 from src.web.app import app
 from scripts.generate_test_parquet import generate
 
-VALID_TIERS = {"Superhuman/Industrial", "Research", "Experimental"}
+VALID_TIERS = {"Adult", "Adolescent", "Infant"}
 EXPECTED_METRIC_KEYS = {
     "smoothness_ldlj",
     "smoothness_sparc",

@@ -9,9 +9,6 @@
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
     <link href="https://fonts.googleapis.com/css2?family=Outfit:wght@300;400;500;600;700&display=swap" rel="stylesheet">
     <link rel="stylesheet" href="style.css">
-    <!-- Load Three.js and OrbitControls -->
-    <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
-    <script src="https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/controls/OrbitControls.js"></script>
 </head>
 <body>
     <div class="background-elements">
@@ -42,54 +39,17 @@
                 <select id="task-select" class="task-select">
                     <option value="walking">Walking</option>
                     <option value="jumping">Jumping</option>
-                    <option value="transitions">Transitions</option>
+                    <option value="manipulation">Manipulation (2D Only)</option>
                 </select>
 
 
             </div>
 
-            <!-- Stereo Camera Settings Panel -->
-            <div class="stereo-settings-panel glass-card" id="stereo-settings-panel">
-                <div class="stereo-header" id="stereo-toggle-header">
-                    <label class="stereo-toggle-label">
-                        <input type="checkbox" id="stereo-toggle" class="stereo-checkbox">
-                        <span class="stereo-slider"></span>
-                        <span class="stereo-toggle-text">Stereo Camera (Side-by-Side)</span>
-                    </label>
-                    <span class="stereo-badge" id="stereo-badge">OFF</span>
-                </div>
-                <div class="stereo-fields hidden" id="stereo-fields">
-                    <div class="stereo-field">
-                        <label for="stereo-baseline" class="stereo-field-label">Baseline (mm)</label>
-                        <input type="number" id="stereo-baseline" class="stereo-input" value="60" min="1" max="500" step="0.1">
-                        <span class="stereo-field-hint">Distance between camera lenses</span>
-                    </div>
-                    <div class="stereo-field">
-                        <label for="stereo-focal-length" class="stereo-field-label">Focal Length (px)</label>
-                        <input type="number" id="stereo-focal-length" class="stereo-input" value="800" min="100" max="5000" step="1">
-                        <span class="stereo-field-hint">Camera focal length in pixels</span>
-                    </div>
-                    <div class="stereo-field" style="flex-direction: row; align-items: center; justify-content: space-between;">
-                        <div>
-                            <label for="stereo-swap" class="stereo-field-label">Swap L/R</label>
-                            <span class="stereo-field-hint" style="display: block;">Fixes cross-eyed camera feeds</span>
-                        </div>
-                        <input type="checkbox" id="stereo-swap" class="stereo-input" style="width: 24px; height: 24px; cursor: pointer;">
-                    </div>
-                </div>
-            </div>
-
-            <!-- Pipeline Mode Toggle -->
             <div class="stereo-settings-panel glass-card" id="pipeline-mode-panel">
                 <div class="stereo-header">
-                    <label class="stereo-toggle-label">
-                        <input type="checkbox" id="pipeline-2d-toggle" class="stereo-checkbox">
-                        <span class="stereo-slider"></span>
-                        <span class="stereo-toggle-text">2D Overlay Mode</span>
-                    </label>
-                    <span class="stereo-badge" id="pipeline-badge-toggle">3D</span>
+                    <span class="stereo-toggle-text" style="font-weight: 500;">Camera Settings</span>
                 </div>
-                <div class="stereo-fields hidden" id="pipeline-2d-fields">
+                <div class="stereo-fields" id="pipeline-2d-fields">
                     <div class="stereo-field">
                         <label for="ref-length-cm" class="stereo-field-label">Shoulder–Elbow Length (cm)</label>
                         <input type="number" id="ref-length-cm" class="stereo-input" value="20" min="1" max="100" step="0.1">
@@ -226,23 +186,7 @@
                 </div>
             </div>
 
-            <!-- 3D Visualization (shown in 3D mode) -->
-            <div class="glass-card full-span" id="viewer-3d-container" style="display: flex; flex-direction: column; height: 500px;">
-                <div style="display: flex; justify-content: space-between; align-items: center;">
-                    <h3 class="card-title">3D Skeletal Reconstruction</h3>
-                    <span class="pipeline-badge" id="pipeline-badge">Monocular</span>
-                </div>
-                <div id="viewer-container" style="flex: 1; border-radius: 8px; overflow: hidden; margin-top: 1rem; position: relative; background: #000;">
-                    <!-- Three.js Canvas injected here -->
-                    <button id="reset-view-btn" style="position: absolute; top: 10px; right: 10px; z-index: 10; padding: 0.4rem 0.8rem; background: rgba(255,255,255,0.1); border: 1px solid rgba(255,255,255,0.2); color: white; border-radius: 4px; cursor: pointer; backdrop-filter: blur(4px); font-family: inherit; font-size: 0.9rem; transition: background 0.2s;">Reset View</button>
-                </div>
-                <!-- Playback Controls -->
-                <div class="playback-controls" style="display: flex; align-items: center; gap: 1rem; margin-top: 1rem;">
-                    <button id="play-btn" class="icon-btn">▶</button>
-                    <button id="pause-btn" class="icon-btn">⏸</button>
-                    <input type="range" id="timeline" min="0" max="100" value="0" style="flex: 1; cursor: pointer;">
-                </div>
-            </div>
+
 
             <!-- Classification Badge -->
             <div class="glass-card classification-card full-span">
@@ -276,12 +220,60 @@
                         <span class="metric-label" id="label-oscillation">Torso Oscillation (cm)</span>
                         <div id="metric-oscillation" class="metric-value">--</div>
                     </div>
+                    <div class="metric-item">
+                        <span class="info-icon" data-tooltip="Total time the robot is airborne during a jump.">ℹ</span>
+                        <span class="metric-label">Flight Time (s)</span>
+                        <div id="metric-flight-time" class="metric-value">--</div>
+                    </div>
+                    <div class="metric-item">
+                        <span class="info-icon" data-tooltip="Peak vertical acceleration during takeoff.">ℹ</span>
+                        <span class="metric-label">Peak Z-Accel (g)</span>
+                        <div id="metric-peak-z" class="metric-value">--</div>
+                    </div>
+                    <div class="metric-item">
+                        <span class="info-icon" data-tooltip="Jerk magnitude upon landing. Lower is smoother.">ℹ</span>
+                        <span class="metric-label">Landing Jerk</span>
+                        <div id="metric-landing-jerk" class="metric-value">--</div>
+                    </div>
+                    <div class="metric-item">
+                        <span class="info-icon" data-tooltip="Jerk magnitude of the wrists during manipulation. Lower is smoother.">ℹ</span>
+                        <span class="metric-label">Wrist Jerk</span>
+                        <div id="metric-wrist-jerk" class="metric-value">--</div>
+                    </div>
+                    <div class="metric-item">
+                        <span class="info-icon" data-tooltip="Minimum distance from the wrist to the block.">ℹ</span>
+                        <span class="metric-label">Wrist-Block Dist. (cm)</span>
+                        <div id="metric-wrist-dist" class="metric-value">--</div>
+                    </div>
+                    <div class="metric-item">
+                        <span class="info-icon" data-tooltip="Time taken for the manipulation task. Lower is faster.">ℹ</span>
+                        <span class="metric-label">Task Duration (s)</span>
+                        <div id="metric-task-duration" class="metric-value">--</div>
+                    </div>
+                    <div class="metric-item">
+                        <span class="info-icon" data-tooltip="Ratio of straight-line goal progression to total path length. Penalizes moving away from the goal.">ℹ</span>
+                        <span class="metric-label">Path Efficiency</span>
+                        <div id="metric-path-efficiency" class="metric-value">--</div>
+                    </div>
                 </div>
             </div>
         </section>
+        <!-- Bounding Box Modal -->
+        <div id="bbox-modal" class="hidden" style="position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: rgba(0,0,0,0.8); z-index: 1000; display: flex; flex-direction: column; align-items: center; justify-content: center;">
+            <div style="background: var(--surface-light); padding: 2rem; border-radius: 12px; border: 1px solid rgba(255,255,255,0.1); display: flex; flex-direction: column; align-items: center;">
+                <h2 style="margin-bottom: 0.5rem;">Draw Bounding Box</h2>
+                <p style="color: var(--text-secondary); margin-bottom: 1rem;">Click and drag to draw a box around the robot to ignore background objects.</p>
+                <div style="position: relative; border: 2px dashed rgba(255,255,255,0.2); border-radius: 8px; overflow: hidden; background: #000;">
+                    <canvas id="bbox-canvas" style="cursor: crosshair; display: block;"></canvas>
+                </div>
+                <div style="display: flex; gap: 1rem; margin-top: 1.5rem; width: 100%; justify-content: space-between;">
+                    <button id="bbox-skip-btn" style="padding: 0.75rem 1.5rem; border-radius: 8px; border: 1px solid rgba(255,255,255,0.1); background: transparent; color: white; cursor: pointer;">Skip (Auto Detect)</button>
+                    <button id="bbox-confirm-btn" style="padding: 0.75rem 1.5rem; border-radius: 8px; border: none; background: var(--primary); color: white; font-weight: bold; cursor: pointer;">Confirm Box</button>
+                </div>
+            </div>
+        </div>
     </main>
 
-    <script src="viewer.js"></script>
     <script src="script.js"></script>
 </body>
 </html>

@@ -10,50 +10,27 @@ document.addEventListener('DOMContentLoaded', () => {
     let recordedBlob = null;      // Record mode blob
     let activeMode = 'upload';    // 'upload' | 'record'
 
-    // ── Stereo settings ──
-    const stereoToggle = document.getElementById('stereo-toggle');
-    const stereoFields = document.getElementById('stereo-fields');
-    const stereoBadge = document.getElementById('stereo-badge');
-    const stereoBaseline = document.getElementById('stereo-baseline');
-    const stereoFocalLength = document.getElementById('stereo-focal-length');
-
-    stereoToggle.addEventListener('change', () => {
-        const on = stereoToggle.checked;
-        stereoFields.classList.toggle('hidden', !on);
-        stereoBadge.textContent = on ? 'ON' : 'OFF';
-        stereoBadge.classList.toggle('stereo-badge-on', on);
-    });
-
-    // ── Pipeline mode (2D / 3D) ──
-    const pipeline2dToggle = document.getElementById('pipeline-2d-toggle');
-    const pipeline2dFields = document.getElementById('pipeline-2d-fields');
-    const pipelineBadgeToggle = document.getElementById('pipeline-badge-toggle');
-    const refLengthInput = document.getElementById('ref-length-cm');
+    // ── Task View Lock ──
     const cameraViewSelect = document.getElementById('camera-view-select');
-
-    pipeline2dToggle.addEventListener('change', () => {
-        const is2d = pipeline2dToggle.checked;
-        pipeline2dFields.classList.toggle('hidden', !is2d);
-        pipelineBadgeToggle.textContent = is2d ? '2D' : '3D';
-        pipelineBadgeToggle.classList.toggle('stereo-badge-on', is2d);
-    });
-
-    const stereoSwap = document.getElementById('stereo-swap');
     
-    // Hidden elements for L/R swapping
-    const hiddenVideo = document.createElement('video');
-    hiddenVideo.autoplay = true;
-    hiddenVideo.playsInline = true;
-    hiddenVideo.muted = true;
-    hiddenVideo.style.display = 'none';
-    document.body.appendChild(hiddenVideo);
+    function updateCameraViewLock() {
+        if (!cameraViewSelect) return;
+        const task = taskSelect.value;
+        if (task === 'walking') {
+            cameraViewSelect.value = 'side';
+            cameraViewSelect.disabled = true;
+        } else if (task === 'jumping' || task === 'manipulation') {
+            cameraViewSelect.value = 'front';
+            cameraViewSelect.disabled = true;
+        } else {
+            cameraViewSelect.disabled = false;
+        }
+    }
     
-    const swapCanvas = document.createElement('canvas');
-    swapCanvas.style.display = 'none';
-    document.body.appendChild(swapCanvas);
-    const swapCtx = swapCanvas.getContext('2d');
-    let composeAnimationFrame = null;
-    let rawMediaStream = null;
+    if (taskSelect) {
+        taskSelect.addEventListener('change', updateCameraViewLock);
+        updateCameraViewLock();
+    }
 
     // ── Input Mode Tabs ──
     const tabUpload = document.getElementById('tab-upload');
@@ -178,26 +155,7 @@ document.addEventListener('DOMContentLoaded', () => {
                 audio: false
             });
             
-            if (stereoToggle.checked && stereoSwap.checked) {
-                hiddenVideo.srcObject = rawMediaStream;
-                await new Promise(r => hiddenVideo.onplaying = r);
-                
-                const w = hiddenVideo.videoWidth;
-                const h = hiddenVideo.videoHeight;
-                swapCanvas.width = w;
-                swapCanvas.height = h;
-                const halfW = w / 2;
-                
-                function draw() {
-                    swapCtx.drawImage(hiddenVideo, halfW, 0, halfW, h, 0, 0, halfW, h); // Right to Left
-                    swapCtx.drawImage(hiddenVideo, 0, 0, halfW, h, halfW, 0, halfW, h); // Left to Right
-                    composeAnimationFrame = requestAnimationFrame(draw);
-                }
-                draw();
-                mediaStream = swapCanvas.captureStream(30);
-            } else {
-                mediaStream = rawMediaStream;
-            }
+            mediaStream = rawMediaStream;
             
             cameraPreview.srcObject = mediaStream;
             noCameraMsg.classList.add('hidden');
@@ -209,10 +167,6 @@ document.addEventListener('DOMContentLoaded', () => {
     }
 
     startCameraBtn.addEventListener('click', startCamera);
-    stereoSwap.addEventListener('change', () => {
-        if (!startCameraBtn.classList.contains('hidden')) return; // not running
-        startCamera();
-    });
 
     startRecordBtn.addEventListener('click', () => {
         if (!mediaStream) return;
@@ -280,6 +234,13 @@ document.addEventListener('DOMContentLoaded', () => {
     tabUpload.addEventListener('click', stopCamera);
 
     // ── Run Analysis ──
+    // ── Bounding Box State ──
+    let bboxCoords = null; // {x, y, w, h}
+    let isDrawingBBox = false;
+    let startX, startY;
+    let currentUploadFile = null;
+
+    // ── Run Analysis ──
     runAnalysisBtn.addEventListener('click', async () => {
         let uploadFile = null;
 
@@ -294,36 +255,190 @@ document.addEventListener('DOMContentLoaded', () => {
                 alert("Please record a video first.");
                 return;
             }
-            // Convert blob to a File object for the FormData
             const ext = recordedBlob.type.includes('mp4') ? 'mp4' : 'webm';
             uploadFile = new File([recordedBlob], `recording.${ext}`, { type: recordedBlob.type });
         }
 
+        currentUploadFile = uploadFile;
+        
+        if (taskSelect && taskSelect.value === 'manipulation') {
+            showBBoxModal(uploadFile);
+        } else {
+            executeAnalysis(uploadFile, null);
+        }
+    });
+
+    function showBBoxModal(file) {
+        const modal = document.getElementById('bbox-modal');
+        const canvas = document.getElementById('bbox-canvas');
+        const ctx = canvas.getContext('2d');
+        bboxCoords = null;
+
+        // Show loading state temporarily
+        modal.classList.remove('hidden');
+        ctx.clearRect(0, 0, canvas.width, canvas.height);
+        ctx.fillStyle = 'white';
+        ctx.font = '16px Arial';
+        ctx.fillText("Loading frame for bounding box...", 10, 30);
+
+        const formData = new FormData();
+        formData.append('file', file);
+        
+        fetch('/api/thumbnail', {
+            method: 'POST',
+            body: formData
+        })
+        .then(response => {
+            if (!response.ok) throw new Error("Could not load thumbnail");
+            return response.blob();
+        })
+        .then(blob => {
+            const img = new Image();
+            img.onload = () => {
+                // Setup canvas size to max 800px width while keeping aspect ratio
+                const maxW = 800;
+                const maxH = 600;
+                let drawW = img.width;
+                let drawH = img.height;
+                
+                if (drawW > maxW) {
+                    drawH = (maxW / drawW) * drawH;
+                    drawW = maxW;
+                }
+                if (drawH > maxH) {
+                    drawW = (maxH / drawH) * drawW;
+                    drawH = maxH;
+                }
+                
+                canvas.width = drawW;
+                canvas.height = drawH;
+                
+                // Draw first frame
+                ctx.drawImage(img, 0, 0, canvas.width, canvas.height);
+            
+            // Setup drawing listeners
+            let imgData = ctx.getImageData(0, 0, canvas.width, canvas.height);
+            
+            canvas.onmousedown = (e) => {
+                isDrawingBBox = true;
+                const rect = canvas.getBoundingClientRect();
+                startX = e.clientX - rect.left;
+                startY = e.clientY - rect.top;
+            };
+            
+            canvas.onmousemove = (e) => {
+                const rect = canvas.getBoundingClientRect();
+                const curX = e.clientX - rect.left;
+                const curY = e.clientY - rect.top;
+                
+                ctx.putImageData(imgData, 0, 0); // Restore frame
+                
+                // Draw crosshairs
+                ctx.strokeStyle = 'rgba(255, 255, 255, 0.7)';
+                ctx.lineWidth = 1;
+                ctx.setLineDash([5, 5]);
+                ctx.beginPath();
+                ctx.moveTo(0, curY);
+                ctx.lineTo(canvas.width, curY);
+                ctx.moveTo(curX, 0);
+                ctx.lineTo(curX, canvas.height);
+                ctx.stroke();
+                ctx.setLineDash([]); // Reset line dash
+                
+                if (isDrawingBBox) {
+                    ctx.strokeStyle = '#00ffff';
+                    ctx.lineWidth = 2;
+                    ctx.strokeRect(startX, startY, curX - startX, curY - startY);
+                } else if (bboxCoords) {
+                    const scaleX = canvas.width / img.width;
+                    const scaleY = canvas.height / img.height;
+                    ctx.strokeStyle = '#00ffff';
+                    ctx.lineWidth = 2;
+                    ctx.strokeRect(bboxCoords.x * scaleX, bboxCoords.y * scaleY, bboxCoords.w * scaleX, bboxCoords.h * scaleY);
+                }
+            };
+            
+            canvas.onmouseleave = () => {
+                ctx.putImageData(imgData, 0, 0); // Restore frame
+                if (bboxCoords && !isDrawingBBox) {
+                    const scaleX = canvas.width / img.width;
+                    const scaleY = canvas.height / img.height;
+                    ctx.strokeStyle = '#00ffff';
+                    ctx.lineWidth = 2;
+                    ctx.strokeRect(bboxCoords.x * scaleX, bboxCoords.y * scaleY, bboxCoords.w * scaleX, bboxCoords.h * scaleY);
+                }
+                isDrawingBBox = false;
+            };
+            
+            canvas.onmouseup = (e) => {
+                isDrawingBBox = false;
+                const rect = canvas.getBoundingClientRect();
+                const endX = e.clientX - rect.left;
+                const endY = e.clientY - rect.top;
+                
+                const x = Math.min(startX, endX);
+                const y = Math.min(startY, endY);
+                const w = Math.abs(endX - startX);
+                const h = Math.abs(endY - startY);
+                
+                if (w > 20 && h > 20) {
+                    // Map back to original image dimensions
+                    const scaleX = img.width / canvas.width;
+                    const scaleY = img.height / canvas.height;
+                    bboxCoords = {
+                        x: Math.round(x * scaleX),
+                        y: Math.round(y * scaleY),
+                        w: Math.round(w * scaleX),
+                        h: Math.round(h * scaleY)
+                    };
+                    canvas.onmouseleave(); // Trigger a render of the completed box
+                } else {
+                    bboxCoords = null; // Too small
+                    ctx.putImageData(imgData, 0, 0); // Restore frame
+                }
+            };
+        }; // Close img.onload
+        img.src = URL.createObjectURL(blob);
+    })
+    .catch(err => {
+        console.error("Thumbnail error:", err);
+        modal.classList.add('hidden');
+        // If it fails, just skip bbox and run analysis directly
+        executeAnalysis(file, null);
+    });
+}
+
+    document.getElementById('bbox-skip-btn').addEventListener('click', () => {
+        document.getElementById('bbox-modal').classList.add('hidden');
+        executeAnalysis(currentUploadFile, null);
+    });
+
+    document.getElementById('bbox-confirm-btn').addEventListener('click', () => {
+        document.getElementById('bbox-modal').classList.add('hidden');
+        executeAnalysis(currentUploadFile, bboxCoords);
+    });
+
+    async function executeAnalysis(uploadFile, bbox) {
         resultsSection.classList.add('hidden');
         loadingOverlay.classList.remove('hidden');
 
         try {
             const formData = new FormData();
             formData.append('camera', uploadFile);
+            if (bbox) {
+                formData.append('crop_x', bbox.x);
+                formData.append('crop_y', bbox.y);
+                formData.append('crop_w', bbox.w);
+                formData.append('crop_h', bbox.h);
+            }
             if (taskSelect) {
                 formData.append('task', taskSelect.value);
             }
-
-            // Stereo settings
-            if (stereoToggle.checked) {
-                formData.append('stereo', 'true');
-                formData.append('baseline', stereoBaseline.value);
-                formData.append('focal_length', stereoFocalLength.value);
-            }
-
-            // Pipeline mode
-            if (pipeline2dToggle.checked) {
-                formData.append('pipeline_mode', '2d');
-                formData.append('ref_length_cm', refLengthInput.value);
-                formData.append('camera_view', cameraViewSelect.value);
-            } else {
-                formData.append('pipeline_mode', '3d');
-            }
+            const refLengthInput = document.getElementById('ref-length-cm');
+            const cameraViewSelect = document.getElementById('camera-view-select');
+            
+            formData.append('ref_length_cm', refLengthInput.value);
+            formData.append('camera_view', cameraViewSelect.value);
 
             const response = await fetch('/api/upload_av', {
                 method: 'POST',
@@ -369,17 +484,6 @@ document.addEventListener('DOMContentLoaded', () => {
             if (!jobResult) throw new Error('No result returned');
             const resultData = jobResult;
 
-            // Update pipeline badge
-            const pipelineBadge = document.getElementById('pipeline-badge');
-            if (pipelineBadge) {
-                if (resultData.stereo_used) {
-                    pipelineBadge.textContent = 'Stereo-Fused';
-                    pipelineBadge.classList.add('pipeline-badge-stereo');
-                } else {
-                    pipelineBadge.textContent = 'Monocular';
-                    pipelineBadge.classList.remove('pipeline-badge-stereo');
-                }
-            }
 
             // Update Classification Tier
             const tierBadge = document.getElementById('tier-badge');
@@ -390,10 +494,10 @@ document.addEventListener('DOMContentLoaded', () => {
                 finalScore.textContent = parseFloat(resultData.classification.score).toFixed(2);
                 
                 // Colorize badge based on tier
-                if (resultData.classification.tier === 'Superhuman/Industrial') {
+                if (resultData.classification.tier === 'Adult') {
                     tierBadge.style.background = 'linear-gradient(135deg, #f59e0b, #ef4444)';
                     tierBadge.style.webkitBackgroundClip = 'text';
-                } else if (resultData.classification.tier === 'Research') {
+                } else if (resultData.classification.tier === 'Adolescent') {
                     tierBadge.style.background = 'linear-gradient(135deg, #3b82f6, #8b5cf6)';
                     tierBadge.style.webkitBackgroundClip = 'text';
                 } else {
@@ -410,12 +514,33 @@ document.addEventListener('DOMContentLoaded', () => {
                     'metric-clearance': resultData.metrics.mean_clearance_cm,
                     'metric-stride': resultData.metrics.stride_length_m,
                     'metric-speed': resultData.metrics.speed_m_s,
-                    'metric-oscillation': resultData.metrics.torso_oscillation_cm
+                    'metric-oscillation': resultData.metrics.torso_oscillation_cm,
+                    'metric-flight-time': resultData.metrics.flight_time_s,
+                    'metric-peak-z': resultData.metrics.peak_z_accel_g,
+                    'metric-landing-jerk': resultData.metrics.landing_jerk,
+                    'metric-wrist-jerk': resultData.metrics.wrist_jerk,
+                    'metric-wrist-dist': resultData.metrics.wrist_to_block_min_dist_cm,
+                    'metric-task-duration': resultData.metrics.task_duration_s,
+                    'metric-path-efficiency': resultData.metrics.block_path_efficiency
+                };
+
+                const keyMap = {
+                    'metric-clearance': 'mean_clearance_cm',
+                    'metric-stride': 'stride_length_m',
+                    'metric-speed': 'speed_m_s',
+                    'metric-oscillation': 'torso_oscillation_cm',
+                    'metric-flight-time': 'flight_time_s',
+                    'metric-peak-z': 'peak_z_accel_g',
+                    'metric-landing-jerk': 'landing_jerk',
+                    'metric-wrist-jerk': 'wrist_jerk',
+                    'metric-wrist-dist': 'wrist_to_block_min_dist_cm',
+                    'metric-task-duration': 'task_duration_s',
+                    'metric-path-efficiency': 'block_path_efficiency'
                 };
                 
                 // Update dynamic labels if front view
                 const view = cameraViewSelect ? cameraViewSelect.value : 'side';
-                const is2DFront = (resultData.pipeline_mode === '2d' && view === 'front');
+                const is2DFront = (view === 'front');
                 
                 const labelStride = document.getElementById('label-stride');
                 const labelSpeed = document.getElementById('label-speed');
@@ -436,38 +561,38 @@ document.addEventListener('DOMContentLoaded', () => {
 
                 const relevantMetrics = {
                     'walking': ['metric-clearance', 'metric-stride', 'metric-speed', 'metric-oscillation'],
-                    'jumping': [],
-                    'transitions': [],
+                    'jumping': ['metric-flight-time', 'metric-peak-z', 'metric-landing-jerk'],
+
+                    'manipulation': ['metric-wrist-jerk', 'metric-wrist-dist', 'metric-task-duration', 'metric-path-efficiency'],
                     'general': Object.keys(metricMap) // show all for general
                 };
 
                 const taskType = resultData.task || 'general';
                 const toShow = relevantMetrics[taskType] || relevantMetrics['general'];
+                const contributions = resultData.classification ? resultData.classification.contributions : null;
 
                 for (const [id, value] of Object.entries(metricMap)) {
                     const el = document.getElementById(id);
                     if (el && toShow.includes(id)) {
                         el.parentElement.style.display = 'block';
-                        el.textContent = (value !== undefined && value !== null) ? parseFloat(value).toFixed(2) : '0.00';
+                        let text = (value !== undefined && value !== null) ? parseFloat(value).toFixed(2) : '0.00';
+                        
+                        if (contributions && keyMap[id]) {
+                            const contrib = contributions[keyMap[id]];
+                            if (contrib !== undefined) {
+                                text += ` <span style="font-size: 0.75rem; color: #10b981; margin-left: 0.5rem; background: rgba(16,185,129,0.1); padding: 0.1rem 0.3rem; border-radius: 4px; vertical-align: middle;">+${parseFloat(contrib).toFixed(2)} pts</span>`;
+                            }
+                        }
+                        
+                        el.innerHTML = text;
                     }
                 }
             }
             
-            // Show/hide the correct viewer based on pipeline mode
+            // Show the viewer
             const viewer2d = document.getElementById('viewer-2d-container');
-            const viewer3d = document.getElementById('viewer-3d-container');
-
-            if (resultData.pipeline_mode === '2d') {
+            if (viewer2d) {
                 viewer2d.style.display = 'flex';
-                viewer3d.style.display = 'none';
-            } else {
-                viewer2d.style.display = 'flex'; // ALWAYS show 2D side-by-side if data is available
-                viewer3d.style.display = 'flex';
-
-                // Load 3D Playback Data
-                if (resultData.poses_3d && window.loadPlaybackData) {
-                    window.loadPlaybackData(resultData.poses_3d, resultData.valid_mask);
-                }
             }
 
             // Always load 2D overlay if we have the data, regardless of 3D mode
@@ -480,7 +605,9 @@ document.addEventListener('DOMContentLoaded', () => {
                     resultData.frame_width,
                     resultData.frame_height,
                     resultData.fps || 30,
-                    resultData.stereo_used
+                    resultData.stereo_used,
+                    resultData.video_url,
+                    resultData.objects_2d
                 );
             }
 
@@ -492,7 +619,7 @@ document.addEventListener('DOMContentLoaded', () => {
             alert('Failed to upload video files: ' + error.message);
             loadingOverlay.classList.add('hidden');
         }
-    });
+    }
 
     // ── 2D Overlay Renderer ──
     const COCO_SKELETON_2D = [
@@ -512,9 +639,8 @@ document.addEventListener('DOMContentLoaded', () => {
     let overlay2dPlaying = false;
     let overlay2dFrame = 0;
     let overlay2dAnimId = null;
-
-    window.load2DOverlay = function(videoFile, keypoints, confidence, frameW, frameH, fps, isStereo) {
-        overlay2dData = { keypoints, confidence, frameW, frameH, fps, isStereo };
+    window.load2DOverlay = function(videoFile, keypoints, confidence, frameW, frameH, fps, isStereo, transcodedUrl, objects2d) {
+        overlay2dData = { keypoints, confidence, frameW, frameH, fps, isStereo, objects: objects2d };
         overlay2dFrame = 0;
         overlay2dPlaying = false;
 
@@ -531,9 +657,12 @@ document.addEventListener('DOMContentLoaded', () => {
             drawPoseFrame(0);
         }, { once: true });
 
-        // Load video after attaching listener to prevent race conditions
-        const url = URL.createObjectURL(videoFile);
-        video.src = url;
+        // Load transcoded video if available (fixes HEVC/H.265 playback in browser)
+        if (transcodedUrl) {
+            video.src = transcodedUrl;
+        } else {
+            video.src = URL.createObjectURL(videoFile);
+        }
         video.load();
 
         // Play / Pause / Scrub
@@ -645,9 +774,7 @@ document.addEventListener('DOMContentLoaded', () => {
         const ctx = canvas.getContext('2d');
 
         // Scale from original video coords to canvas coords
-        // If the original video is stereo, the keypoints were extracted from the left half.
-        // So the source width corresponds to actual canvas.width / 2.
-        const actualFrameW = overlay2dData.isStereo ? (overlay2dData.frameW * 2) : overlay2dData.frameW;
+        const actualFrameW = overlay2dData.frameW;
         const scaleX = canvas.width / actualFrameW;
         const scaleY = canvas.height / overlay2dData.frameH;
 
@@ -681,6 +808,37 @@ document.addEventListener('DOMContentLoaded', () => {
                 ctx.strokeStyle = '#ffffff';
                 ctx.lineWidth = 3;
                 ctx.stroke();
+            }
+        }
+        
+        // Draw tracked objects
+        if (overlay2dData.objects) {
+            const redBlock = overlay2dData.objects.red_block;
+            if (redBlock && redBlock[frameIdx]) {
+                const [bx, by] = redBlock[frameIdx];
+                if (!isNaN(bx) && !isNaN(by)) {
+                    ctx.fillStyle = '#ff0000'; // Red
+                    ctx.beginPath();
+                    ctx.arc(bx * scaleX, by * scaleY, 12, 0, Math.PI * 2);
+                    ctx.fill();
+                    ctx.strokeStyle = '#ffffff';
+                    ctx.lineWidth = 3;
+                    ctx.stroke();
+                }
+            }
+            
+            const whiteBlock = overlay2dData.objects.white_block;
+            if (whiteBlock && whiteBlock[frameIdx]) {
+                const [bx, by] = whiteBlock[frameIdx];
+                if (!isNaN(bx) && !isNaN(by)) {
+                    ctx.fillStyle = '#ffffff'; // White
+                    ctx.beginPath();
+                    ctx.arc(bx * scaleX, by * scaleY, 12, 0, Math.PI * 2);
+                    ctx.fill();
+                    ctx.strokeStyle = '#000000'; // Black border for visibility
+                    ctx.lineWidth = 3;
+                    ctx.stroke();
+                }
             }
         }
     }

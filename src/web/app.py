@@ -5,6 +5,9 @@ import math
 import numpy as np
 import pandas as pd
 import torch
+import subprocess
+import shutil
+from typing import Optional
 
 # PyTorch 2.6 defaults weights_only=True which breaks mmengine/mmpose checkpoints.
 # Monkeypatch it here to default to False.
@@ -17,23 +20,17 @@ torch.load = _legacy_load
 import threading
 from fastapi import BackgroundTasks
 from src.processing.jobs import JobStore
-from src.processing.pose_estimation import PoseEstimator, StereoConfig
+from src.processing.pose_estimation import PoseEstimator
 from fastapi import FastAPI, UploadFile, File, Form, HTTPException
-from fastapi.responses import JSONResponse
+from fastapi.responses import JSONResponse, Response
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel
 
 from src.ingestion.schema_mapper import SchemaMapper
 from src.features.biomechanics import (
-    compute_smoothness_3d,
-    compute_sparc_3d,
-    compute_symmetry_3d,
-    compute_periodicity_3d,
-    compute_rom_3d,
-    compute_jumping_metrics_3d,
-    compute_transition_metrics_3d,
-    compute_walk_grade_3d,
     compute_walk_grade_2d,
+    compute_jumping_metrics_2d,
+    compute_manipulation_metrics_2d,
     compute_smoothness,
     compute_spectral_arc_length,
     compute_symmetry,
@@ -102,8 +99,15 @@ def _sanitize_floats(value):
         return {k: _sanitize_floats(v) for k, v in value.items()}
     if isinstance(value, (list, tuple)):
         return [_sanitize_floats(v) for v in value]
-    if isinstance(value, float) and not math.isfinite(value):
-        return 0.0
+    if isinstance(value, (float, np.floating)):
+        val = float(value)
+        if not math.isfinite(val):
+            return 0.0
+        return val
+    if isinstance(value, np.integer):
+        return int(value)
+    if isinstance(value, np.ndarray):
+        return [_sanitize_floats(v) for v in value.tolist()]
     return value
 
 
@@ -113,30 +117,41 @@ def _sanitize_floats(value):
 
 
 def _process_upload_task(job_id: str, tmp_name: str, filename: str, task: str,
-                         stereo: bool = False, baseline: float = 60.0,
-                         focal_length: float = 800.0,
-                         pipeline_mode: str = "3d",
                          ref_length_cm: float = 20.0,
-                         camera_view: str = "side"):
+                         camera_view: str = "side",
+                         manual_bbox: Optional[list] = None):
     try:
-        mode_label = "stereo" if stereo else "mono"
-        logger.info(f"Received {mode_label} AV payload. Camera: {filename}")
+        logger.info(f"Received AV payload. Camera: {filename}")
+        
+        transcoded_dir = os.path.join(STATIC_DIR, "transcoded")
+        os.makedirs(transcoded_dir, exist_ok=True)
+        transcoded_filename = f"{job_id}.mp4"
+        transcoded_path = os.path.join(transcoded_dir, transcoded_filename)
+        
+        JOB_STORE.update_job(job_id, 0.05, "Transcoding video for web playback...")
+        try:
+            subprocess.run([
+                'ffmpeg', '-y', '-i', tmp_name,
+                '-c:v', 'libx264', '-preset', 'fast', '-crf', '23',
+                '-pix_fmt', 'yuv420p',
+                '-c:a', 'aac', '-b:a', '128k',
+                transcoded_path
+            ], check=True, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+            video_url = f"/transcoded/{transcoded_filename}"
+        except Exception as e:
+            logger.warning(f"Failed to transcode video: {e}")
+            video_url = None
+
         JOB_STORE.update_job(job_id, 0.1, "Starting pose estimation...")
 
         K, dist = _DEFAULT_MONO_K, _DEFAULT_MONO_DIST
 
         device = get_device()
-        logger.info(f"Running 2D pose estimation + {'stereo-fused' if stereo else 'monocular'} depth lifting on {device}...")
+        logger.info(f"Running 2D pose estimation on {device}...")
         
         def progress_cb(pct: float, msg: str):
-            # Scale 2D pose estimation to be 10% -> 90% of the job
             overall_pct = 0.1 + (pct * 0.8)
             JOB_STORE.update_job(job_id, overall_pct, msg)
-
-        stereo_config = StereoConfig(
-            baseline_mm=baseline,
-            focal_length_px=focal_length,
-        ) if stereo else None
 
         global GLOBAL_ESTIMATOR
         with INFERENCE_LOCK:
@@ -144,111 +159,90 @@ def _process_upload_task(job_id: str, tmp_name: str, filename: str, task: str,
                 GLOBAL_ESTIMATOR = PoseEstimator(device=device)
 
             pose_result = GLOBAL_ESTIMATOR.estimate_from_video(
-                tmp_name, max_frames=None, progress_callback=progress_cb,
-                stereo=stereo, stereo_config=stereo_config, morphology='human',
-                pipeline_mode=pipeline_mode
+                tmp_name, max_frames=None, progress_callback=progress_cb, task=task, manual_bbox=manual_bbox
             )
 
         JOB_STORE.update_job(job_id, 0.9, "Extracting biomechanical features...")
 
         fps = pose_result.fps or 30.0
 
-        if pipeline_mode == "2d":
-            # ── 2D Pipeline: grade directly from pixel keypoints ──
-            walk_grade = compute_walk_grade_2d(
-                pose_result.keypoints,
-                pose_result.confidence,
-                fps,
-                ref_length_cm=ref_length_cm,
-                view=camera_view,
-            )
-            
-            # We no longer calculate manipulation/jumping metrics for 2D.
-            cm_per_px = walk_grade.get("cm_per_pixel", 0.0)
-            
-            metrics = {
-                "walk_grade": walk_grade.get("walk_grade", 0.0),
-                "mean_clearance_cm": walk_grade.get("mean_clearance_cm", 0.0),
-                "stride_length_m": walk_grade.get("stride_length_m", 0.0),
-                "speed_m_s": walk_grade.get("speed_m_s", 0.0),
-                "torso_oscillation_cm": walk_grade.get("torso_oscillation_cm", 0.0),
-                "fall_detected": 1.0 if walk_grade.get("fall_detected", False) else 0.0,
-                "cm_per_pixel": walk_grade.get("cm_per_pixel", 0.0),
-            }
-            metrics = _sanitize_floats(metrics)
+        # ── 2D Pipeline: grade directly from pixel keypoints ──
+        walk_grade = compute_walk_grade_2d(
+            pose_result.keypoints,
+            pose_result.confidence,
+            fps,
+            ref_length_cm=ref_length_cm,
+            view=camera_view,
+        )
+        
+        jumping_metrics = compute_jumping_metrics_2d(
+            pose_result.keypoints,
+            pose_result.confidence,
+            fps,
+            ref_length_cm=ref_length_cm,
+        )
+        
+        manipulation_metrics = compute_manipulation_metrics_2d(
+            pose_result.keypoints,
+            pose_result.confidence,
+            fps,
+            ref_length_cm=ref_length_cm,
+            objects=pose_result.objects,
+        )
+        
+        cm_per_px = walk_grade.get("cm_per_pixel", 0.0)
+        
+        metrics = {
+            "walk_grade": walk_grade.get("walk_grade", 0.0),
+            "mean_clearance_cm": walk_grade.get("mean_clearance_cm", 0.0),
+            "stride_length_m": walk_grade.get("stride_length_m", 0.0),
+            "speed_m_s": walk_grade.get("speed_m_s", 0.0),
+            "torso_oscillation_cm": walk_grade.get("torso_oscillation_cm", 0.0),
+            "fall_detected": 1.0 if (walk_grade.get("fall_detected", False) or jumping_metrics.get("fall_detected", False)) else 0.0,
+            "cm_per_pixel": walk_grade.get("cm_per_pixel", 0.0),
+            "flight_time_s": jumping_metrics.get("flight_time", 0.0),
+            "peak_z_accel_g": jumping_metrics.get("peak_z_accel", 0.0),
+            "landing_jerk": jumping_metrics.get("landing_jerk", 0.0),
+            "wrist_jerk": manipulation_metrics.get("wrist_jerk", 0.0),
+            "red_block_displacement_cm": manipulation_metrics.get("red_block_displacement_cm", 0.0),
+            "white_block_displacement_cm": manipulation_metrics.get("white_block_displacement_cm", 0.0),
+            "wrist_to_block_min_dist_cm": manipulation_metrics.get("wrist_to_block_min_dist_cm", 100.0),
+            "task_duration_s": manipulation_metrics.get("task_duration_s", 0.0),
+            "block_path_efficiency": manipulation_metrics.get("block_path_efficiency", 0.0),
+        }
+        metrics = _sanitize_floats(metrics)
 
-            JOB_STORE.update_job(job_id, 0.95, "Running classifier...")
-            classifier = RuleBasedClassifier()
-            score, tier = classifier.classify(metrics, task)
-            score = _sanitize_floats(score)
+        JOB_STORE.update_job(job_id, 0.95, "Running classifier...")
+        classifier = RuleBasedClassifier()
+        score, tier, contributions = classifier.classify(metrics, task)
+        score = _sanitize_floats(score)
 
-            # Return 2D keypoints for the overlay instead of 3D poses
-            keypoints_list = pose_result.keypoints.tolist()
-            confidence_list = pose_result.confidence.tolist()
+        keypoints_list = _sanitize_floats(pose_result.keypoints.tolist())
+        confidence_list = _sanitize_floats(pose_result.confidence.tolist())
 
-            result_payload = {
-                "task": task,
-                "status": "success",
-                "pipeline_mode": "2d",
-                "message": f"Analysis complete (2D overlay, {walk_grade.get('cm_per_pixel', 0):.3f} cm/px).",
-                "metrics": metrics,
-                "keypoints_2d": keypoints_list,
-                "confidence_2d": confidence_list,
-                "frame_width": pose_result.frame_width,
-                "frame_height": pose_result.frame_height,
-                "fps": fps,
-                "stereo_used": pose_result.stereo_used,
-                "classification": {
-                    "score": score,
-                    "tier": tier,
-                },
-            }
-        else:
-            # ── 3D Pipeline (existing) ──
-            poses_3d = pose_result.poses_3d
+        objects_list = None
+        if pose_result.objects:
+            objects_list = {k: _sanitize_floats(v.tolist()) for k, v in pose_result.objects.items()}
 
-            # MotionBERT outputs dense predictions without NaNs, so we don't need a valid mask
-            walk_grade = compute_walk_grade_3d(poses_3d, fps, keypoints_2d=pose_result.keypoints, confidence_2d=pose_result.confidence)
-
-            metrics = {
-                "walk_grade": walk_grade.get("walk_grade", 0.0),
-                "mean_clearance_cm": walk_grade.get("mean_clearance_cm", 0.0),
-                "stride_length_m": walk_grade.get("stride_length_m", 0.0),
-                "speed_m_s": walk_grade.get("speed_m_s", 0.0),
-                "torso_oscillation_cm": walk_grade.get("torso_oscillation_cm", 0.0),
-                "fall_detected": 1.0 if walk_grade.get("fall_detected", False) else 0.0,
-            }
-            metrics = _sanitize_floats(metrics)
-
-            JOB_STORE.update_job(job_id, 0.95, "Running classifier...")
-
-            classifier = RuleBasedClassifier()
-            score, tier = classifier.classify(metrics, task)
-            score = _sanitize_floats(score)
-
-            poses_3d_clean = np.where(np.isnan(poses_3d), None, poses_3d).tolist()
-            valid_mask_clean = valid_mask.tolist()
-
-            message_label = "stereo-fused depth" if pose_result.stereo_used else "monocular depth estimate"
-            result_payload = {
-                "task": task,
-                "status": "success",
-                "pipeline_mode": "3d",
-                "message": f"Analysis complete ({message_label}).",
-                "metrics": metrics,
-                "poses_3d": poses_3d_clean,
-                "valid_mask": valid_mask_clean,
-                "keypoints_2d": pose_result.keypoints.tolist(),
-                "confidence_2d": pose_result.confidence.tolist(),
-                "frame_width": pose_result.frame_width,
-                "frame_height": pose_result.frame_height,
-                "fps": fps,
-                "stereo_used": pose_result.stereo_used,
-                "classification": {
-                    "score": score,
-                    "tier": tier,
-                },
-            }
+        result_payload = {
+            "task": task,
+            "status": "success",
+            "pipeline_mode": "2d",
+            "message": f"Analysis complete (2D overlay, {walk_grade.get('cm_per_pixel', 0):.3f} cm/px).",
+            "metrics": metrics,
+            "video_url": video_url,
+            "keypoints_2d": keypoints_list,
+            "confidence_2d": confidence_list,
+            "objects_2d": objects_list,
+            "frame_width": pose_result.frame_width,
+            "frame_height": pose_result.frame_height,
+            "fps": fps,
+            "classification": {
+                "score": score,
+                "tier": tier,
+                "contributions": contributions,
+            },
+        }
         
         JOB_STORE.finish_job(job_id, result_payload)
 
@@ -267,18 +261,38 @@ async def get_job_status(job_id: str):
         raise HTTPException(status_code=404, detail="Job not found")
     return JSONResponse(content=job)
 
+@app.post("/api/thumbnail")
+async def get_thumbnail(file: UploadFile = File(...)):
+    import cv2
+    suffix = _video_suffix(file.filename)
+    tmp = tempfile.NamedTemporaryFile(suffix=suffix, delete=False)
+    tmp.write(await file.read())
+    tmp.close()
+    
+    cap = cv2.VideoCapture(tmp.name)
+    ret, frame = cap.read()
+    cap.release()
+    os.remove(tmp.name)
+    
+    if not ret:
+        return JSONResponse(status_code=400, content={"error": "Could not read video frame"})
+        
+    _, buffer = cv2.imencode('.jpg', frame)
+    return Response(content=buffer.tobytes(), media_type="image/jpeg")
+
+
 
 @app.post("/api/upload_av")
 async def upload_av_file(
     background_tasks: BackgroundTasks,
     camera: UploadFile = File(...),
     task: str = Form("general"),
-    stereo: str = Form("false"),
-    baseline: float = Form(60.0),
-    focal_length: float = Form(800.0),
-    pipeline_mode: str = Form("3d"),
     ref_length_cm: float = Form(20.0),
     camera_view: str = Form("side"),
+    crop_x: Optional[int] = Form(None),
+    crop_y: Optional[int] = Form(None),
+    crop_w: Optional[int] = Form(None),
+    crop_h: Optional[int] = Form(None),
 ):
     suffix = _video_suffix(camera.filename)
     tmp = tempfile.NamedTemporaryFile(suffix=suffix, delete=False)
@@ -305,14 +319,14 @@ async def upload_av_file(
             logger.warning(f"ffmpeg conversion failed: {e}")
             process_path = tmp.name
 
-    is_stereo = stereo.lower() in ("true", "1", "yes")
+    manual_bbox = None
+    if crop_x is not None and crop_y is not None and crop_w is not None and crop_h is not None:
+        manual_bbox = [crop_x, crop_y, crop_x + crop_w, crop_y + crop_h]
 
     job_id = JOB_STORE.create_job()
     background_tasks.add_task(
         _process_upload_task, job_id, process_path, camera.filename, task,
-        stereo=is_stereo, baseline=baseline, focal_length=focal_length,
-        pipeline_mode=pipeline_mode, ref_length_cm=ref_length_cm,
-        camera_view=camera_view
+        ref_length_cm, camera_view, manual_bbox
     )
 
     return JSONResponse(content={"job_id": job_id, "status": "accepted"})
@@ -488,7 +502,7 @@ async def upload_log_file(file: UploadFile = File(...), task: str = Form("genera
             metrics = extract_metrics_from_dataframe(df)
             logger.info(f"Extracted metrics: {metrics}")
             classifier = RuleBasedClassifier()
-            score, tier = classifier.classify(metrics, task=task)
+            score, tier, contribs = classifier.classify(metrics, task=task)
 
         metrics = _sanitize_floats(metrics)
         score = _sanitize_floats(round(score, 3))
@@ -501,6 +515,7 @@ async def upload_log_file(file: UploadFile = File(...), task: str = Form("genera
             "classification": {
                 "score": score,
                 "tier": tier,
+                "contributions": contribs if task != "testing" else {}
             },
             "playback": playback_data,
             "status": "success",
@@ -524,4 +539,4 @@ app.mount("/", StaticFiles(directory=STATIC_DIR, html=True), name="static")
 
 if __name__ == "__main__":
     import uvicorn
-    uvicorn.run("src.web.app:app", host="0.0.0.0", port=3000, reload=True)
+    uvicorn.run("src.web.app:app", host="localhost", port=3000, reload=True)

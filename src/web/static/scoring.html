@@ -31,10 +31,13 @@
         <section class="glass-card full-span" style="margin-bottom: 2rem;">
             <h3 class="card-title">Score Calculation</h3>
             <p style="color: var(--text-secondary); line-height: 1.6; margin-bottom: 1rem; font-size: 1.1rem;">
-                The overall score is a weighted average of individual metric scores, normalized between <strong style="color: var(--text);">0.0 (Experimental)</strong> and <strong style="color: var(--text);">1.0 (Superhuman/Industrial)</strong>.
+                The overall score is a weighted average of individual metric scores, normalized relative to <strong style="color: var(--text);">0.0 (Infant)</strong> and <strong style="color: var(--text);">1.0 (Adult)</strong> bounds.
+            </p>
+            <p style="color: var(--text-secondary); line-height: 1.6; margin-bottom: 1rem; font-size: 1.1rem;">
+                For each metric, we define an <em style="color: var(--primary);">Ideal</em> bound and an <em style="color: #ef4444;">Acceptable</em> bound. The actual measured value is linearly interpolated between these two bounds. If a metric vastly outperforms the ideal bound, its score is uncapped and continues to accumulate points—allowing exceptional performances to score well beyond 1.0!
             </p>
             <p style="color: var(--text-secondary); line-height: 1.6; font-size: 1.1rem;">
-                For each metric, we define an <em style="color: var(--primary);">Ideal</em> bound and an <em style="color: #ef4444;">Acceptable</em> bound. The actual measured value is linearly interpolated between these two bounds. If a metric exceeds the ideal bound, it is capped at 1.0. If it falls below the acceptable bound, it receives a 0.0.
+                You can see exactly how many points each metric contributed to your final score by looking at the small green badges (e.g., <span style="font-size: 0.75rem; color: #10b981; margin-left: 0.2rem; background: rgba(16,185,129,0.1); padding: 0.1rem 0.3rem; border-radius: 4px;">+0.25 pts</span>) next to the metric values on the dashboard.
             </p>
         </section>
 
@@ -55,26 +58,7 @@
                         <li style="display: flex; justify-content: space-between;"><span>Torso Oscillation</span> <strong style="color: white;">25%</strong></li>
                     </ul>
                 </div>
-                <!-- Reaching -->
-                <div class="metric-item" style="padding: 1.5rem;">
-                    <h4 style="color: white; margin-bottom: 1rem; font-size: 1.3rem; font-weight: 600;">Reaching</h4>
-                    <ul style="color: var(--text-secondary); list-style: none; padding: 0; display: flex; flex-direction: column; gap: 0.5rem;">
-                        <li style="display: flex; justify-content: space-between;"><span>Smoothness (LDLJ)</span> <strong style="color: white;">30%</strong></li>
-                        <li style="display: flex; justify-content: space-between;"><span>Smoothness (SPARC)</span> <strong style="color: white;">30%</strong></li>
-                        <li style="display: flex; justify-content: space-between;"><span>Range of Motion</span> <strong style="color: white;">30%</strong></li>
-                        <li style="display: flex; justify-content: space-between;"><span>Symmetry</span> <strong style="color: white;">10%</strong></li>
-                    </ul>
-                </div>
-                <!-- Manipulation -->
-                <div class="metric-item" style="padding: 1.5rem;">
-                    <h4 style="color: white; margin-bottom: 1rem; font-size: 1.3rem; font-weight: 600;">Manipulation</h4>
-                    <ul style="color: var(--text-secondary); list-style: none; padding: 0; display: flex; flex-direction: column; gap: 0.5rem;">
-                        <li style="display: flex; justify-content: space-between;"><span>Range of Motion</span> <strong style="color: white;">50%</strong></li>
-                        <li style="display: flex; justify-content: space-between;"><span>Smoothness (LDLJ)</span> <strong style="color: white;">25%</strong></li>
-                        <li style="display: flex; justify-content: space-between;"><span>Smoothness (SPARC)</span> <strong style="color: white;">25%</strong></li>
-                    </ul>
-                </div>
-                <!-- Jumping -->
+
                 <div class="metric-item" style="padding: 1.5rem;">
                     <h4 style="color: white; margin-bottom: 1rem; font-size: 1.3rem; font-weight: 600;">Jumping</h4>
                     <ul style="color: var(--text-secondary); list-style: none; padding: 0; display: flex; flex-direction: column; gap: 0.5rem;">
@@ -91,6 +75,16 @@
                         <li style="display: flex; justify-content: space-between;"><span>Transition Time</span> <strong style="color: white;">30%</strong></li>
                         <li style="display: flex; justify-content: space-between;"><span>Smoothness (LDLJ)</span> <strong style="color: white;">10%</strong></li>
                         <li style="display: flex; justify-content: space-between;"><span>Smoothness (SPARC)</span> <strong style="color: white;">10%</strong></li>
+                    </ul>
+                </div>
+                <!-- Manipulation -->
+                <div class="metric-item" style="padding: 1.5rem;">
+                    <h4 style="color: white; margin-bottom: 1rem; font-size: 1.3rem; font-weight: 600;">Manipulation</h4>
+                    <ul style="color: var(--text-secondary); list-style: none; padding: 0; display: flex; flex-direction: column; gap: 0.5rem;">
+                        <li style="display: flex; justify-content: space-between;"><span>Task Duration</span> <strong style="color: white;">30%</strong></li>
+                        <li style="display: flex; justify-content: space-between;"><span>Path Efficiency</span> <strong style="color: white;">30%</strong></li>
+                        <li style="display: flex; justify-content: space-between;"><span>Min Distance to Target</span> <strong style="color: white;">20%</strong></li>
+                        <li style="display: flex; justify-content: space-between;"><span>Wrist Jerk</span> <strong style="color: white;">20%</strong></li>
                     </ul>
                 </div>
             </div>

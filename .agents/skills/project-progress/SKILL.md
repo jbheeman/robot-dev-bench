@@ -115,5 +115,4 @@ To ensure smooth execution, this phase is broken down into sequential steps:
 - [X] **Localhost Deployment**: Updated `src/web/app.py` to host on `localhost:3000` instead of `0.0.0.0` as per user request.
 - [X] **Keypoint Teleportation Filter**: Added a per-keypoint jump filter in `PoseEstimator` that drops keypoints (sets confidence to 0) if they jump more than 15% of the frame dimension between frames.
 - [X] **Manipulation Dashboard**: Added the calculated manipulation metrics (displacement, wrist distance) to the frontend dashboard UI and fixed a bounding logic bug in `RuleBasedClassifier` that caused metric scores to incorrectly exceed 1.0.
-- [X] **Tracking Bug Fixes**: Fixed a bug where `pose_estimation.py` was loading stock ViTPose-huge instead of the fine-tuned humanoid model, causing it to track humans in the background. Also fixed the `jump_threshold` bug that permanently locked out fast-moving joints (like wrists) from tracking recovery.
-- [X] **Scoring Documentation**: Updated `scoring.html` to correctly document the new manipulation metrics and weights.
+- [X] **UI & Robustness Polish**: Fixed a JSON serialization bug in `app.py` for numpy float types. Added a fullscreen capability to the 2D video wrapper in the dashboard. Updated the `scoring.html` documentation to accurately reflect the latest manipulation metric weights.

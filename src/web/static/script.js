@@ -691,6 +691,30 @@ document.addEventListener('DOMContentLoaded', () => {
             drawPoseFrame(f);
         });
 
+        const fullscreenBtn = document.getElementById('fullscreen-2d-btn');
+        if (fullscreenBtn) {
+            fullscreenBtn.onclick = () => {
+                const container = document.getElementById('video-overlay-wrapper');
+                if (!document.fullscreenElement) {
+                    if (container.requestFullscreen) {
+                        container.requestFullscreen();
+                    } else if (container.webkitRequestFullscreen) {
+                        container.webkitRequestFullscreen();
+                    } else if (container.msRequestFullscreen) {
+                        container.msRequestFullscreen();
+                    }
+                } else {
+                    if (document.exitFullscreen) {
+                        document.exitFullscreen();
+                    } else if (document.webkitExitFullscreen) {
+                        document.webkitExitFullscreen();
+                    } else if (document.msExitFullscreen) {
+                        document.msExitFullscreen();
+                    }
+                }
+            };
+        }
+
         // Sync overlay to video time
         video.addEventListener('timeupdate', () => {
             if (!overlay2dData) return;

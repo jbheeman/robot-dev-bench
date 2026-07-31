@@ -177,12 +177,13 @@
                 <div id="video-overlay-wrapper" style="flex: 1; border-radius: 8px; overflow: hidden; margin-top: 1rem; position: relative; background: #000;">
                     <video id="overlay-video" style="width: 100%; height: 100%; object-fit: contain;" muted loop playsinline></video>
                     <canvas id="pose-canvas" style="position: absolute; top: 0; left: 0; width: 100%; height: 100%; object-fit: contain; pointer-events: none;"></canvas>
-                </div>
-                <!-- Playback Controls for 2D -->
-                <div class="playback-controls" style="display: flex; align-items: center; gap: 1rem; margin-top: 1rem;">
-                    <button id="play-2d-btn" class="icon-btn">▶</button>
-                    <button id="pause-2d-btn" class="icon-btn">⏸</button>
-                    <input type="range" id="timeline-2d" min="0" max="100" value="0" style="flex: 1; cursor: pointer;">
+                    <!-- Playback Controls for 2D (Overlay) -->
+                    <div class="playback-controls" style="position: absolute; bottom: 0; left: 0; width: 100%; box-sizing: border-box; display: flex; align-items: center; gap: 1rem; padding: 2rem 1rem 1rem; background: linear-gradient(transparent, rgba(0,0,0,0.9)); z-index: 10;">
+                        <button id="play-2d-btn" class="icon-btn">▶</button>
+                        <button id="pause-2d-btn" class="icon-btn">⏸</button>
+                        <input type="range" id="timeline-2d" min="0" max="100" value="0" style="flex: 1; cursor: pointer;">
+                        <button id="fullscreen-2d-btn" class="icon-btn" title="Fullscreen" style="font-size: 1.2rem; padding: 0.2rem 0.5rem;">⛶</button>
+                    </div>
                 </div>
             </div>
 

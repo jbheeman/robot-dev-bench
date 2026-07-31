@@ -119,7 +119,9 @@ def _sanitize_floats(value):
 def _process_upload_task(job_id: str, tmp_name: str, filename: str, task: str,
                          ref_length_cm: float = 20.0,
                          camera_view: str = "side",
-                         manual_bbox: Optional[list] = None):
+                         manual_bbox: Optional[list] = None,
+                         trim_start: Optional[float] = None,
+                         trim_end: Optional[float] = None):
     try:
         logger.info(f"Received AV payload. Camera: {filename}")
         
@@ -130,13 +132,24 @@ def _process_upload_task(job_id: str, tmp_name: str, filename: str, task: str,
         
         JOB_STORE.update_job(job_id, 0.05, "Transcoding video for web playback...")
         try:
-            subprocess.run([
-                'ffmpeg', '-y', '-i', tmp_name,
+            ffmpeg_cmd = ['ffmpeg', '-y']
+            if trim_start is not None and trim_start > 0:
+                ffmpeg_cmd.extend(['-ss', str(trim_start)])
+            
+            ffmpeg_cmd.extend(['-i', tmp_name])
+            
+            if trim_end is not None and trim_start is not None and trim_end > trim_start:
+                ffmpeg_cmd.extend(['-t', str(trim_end - trim_start)])
+            elif trim_end is not None:
+                ffmpeg_cmd.extend(['-t', str(trim_end)])
+                
+            ffmpeg_cmd.extend([
                 '-c:v', 'libx264', '-preset', 'fast', '-crf', '23',
                 '-pix_fmt', 'yuv420p',
                 '-c:a', 'aac', '-b:a', '128k',
                 transcoded_path
-            ], check=True, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+            ])
+            subprocess.run(ffmpeg_cmd, check=True, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
             video_url = f"/transcoded/{transcoded_filename}"
         except Exception as e:
             logger.warning(f"Failed to transcode video: {e}")
@@ -159,7 +172,7 @@ def _process_upload_task(job_id: str, tmp_name: str, filename: str, task: str,
                 GLOBAL_ESTIMATOR = PoseEstimator(device=device)
 
             pose_result = GLOBAL_ESTIMATOR.estimate_from_video(
-                tmp_name, max_frames=None, progress_callback=progress_cb, task=task, manual_bbox=manual_bbox
+                transcoded_path, max_frames=None, progress_callback=progress_cb, task=task, manual_bbox=manual_bbox
             )
 
         JOB_STORE.update_job(job_id, 0.9, "Extracting biomechanical features...")
@@ -293,6 +306,8 @@ async def upload_av_file(
     crop_y: Optional[int] = Form(None),
     crop_w: Optional[int] = Form(None),
     crop_h: Optional[int] = Form(None),
+    trim_start: Optional[float] = Form(None),
+    trim_end: Optional[float] = Form(None),
 ):
     suffix = _video_suffix(camera.filename)
     tmp = tempfile.NamedTemporaryFile(suffix=suffix, delete=False)
@@ -326,7 +341,7 @@ async def upload_av_file(
     job_id = JOB_STORE.create_job()
     background_tasks.add_task(
         _process_upload_task, job_id, process_path, camera.filename, task,
-        ref_length_cm, camera_view, manual_bbox
+        ref_length_cm, camera_view, manual_bbox, trim_start, trim_end
     )
 
     return JSONResponse(content={"job_id": job_id, "status": "accepted"})

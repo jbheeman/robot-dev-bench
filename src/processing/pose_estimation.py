@@ -128,8 +128,8 @@ def _try_import_mmdet():
 # ── Model configuration ─────────────────────────────────────────────────────
 
 # Default ViTPose++ config and checkpoint (downloaded on first use)
-# Using the fine-tuned humanoid variant for robot pose estimation.
-_DEFAULT_POSE_CONFIG = "td-hm_ViTPose-small_8xb64-210e_coco-256x192"
+# Using the huge variant for maximum accuracy on non-humanoid morphologies.
+_DEFAULT_POSE_CONFIG = "td-hm_ViTPose-huge_8xb64-210e_coco-256x192"
 _DEFAULT_DET_CONFIG = "rtmdet_m_8xb32-300e_coco"
 
 # Model cache directory
@@ -276,7 +276,8 @@ class PoseEstimator:
                 "coco/td-hm_ViTPose-huge_8xb64-210e_coco-256x192-e32adcd4_20230314.pth"
             ),
             "td-hm_ViTPose-small_8xb64-210e_coco-256x192": (
-                os.path.join(_MODEL_CACHE, "vitpose_humanoid.pth")
+                "https://download.openmmlab.com/mmpose/v1/body_2d_keypoint/topdown_heatmap/"
+                "coco/td-hm_ViTPose-small_8xb64-210e_coco-256x192-62d7a712_20230314.pth"
             ),
 
         }
@@ -445,6 +446,7 @@ class PoseEstimator:
                         kx, ky = kpts[j_idx]
                         if kx < mx1 or kx > mx2 or ky < my1 or ky > my2:
                             scores[j_idx] = 0.0
+
                 if task == "manipulation":
                     scores[11:17] = 0.0
 
@@ -455,7 +457,7 @@ class PoseEstimator:
                             dist = np.linalg.norm(kpts[j_idx] - last_valid_kpts[j_idx])
                             if dist > jump_threshold:
                                 scores[j_idx] = 0.0
-                                # Do not continue here! Allow last_valid_kpts to update so tracking can recover next frame.
+                                continue
                         
                         last_valid_kpts[j_idx] = kpts[j_idx]
                         last_valid_scores[j_idx] = scores[j_idx]

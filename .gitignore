@@ -28,9 +28,3 @@ env/
 .idea/
 *.swp
 .ipynb_checkpoints/
-
-# Model Checkpoints and Work Dirs
-*.pth
-*.pth.tr
-work_dirs/
-checkpoints/
